@@ -1,6 +1,6 @@
 #!/bin/sh
 # Podkop xHTTP transport patch for URLTest mode
-# https://github.com/nickolaich/podkop-xhttp-patch
+# https://github.com/moix89/podkop-xhttp-patch
 
 set -e
 

@@ -43,7 +43,7 @@ This makes Podkop fully capable of using multiple `vless://...type=xhttp...` lin
 ## Installation
 
 ```sh
-sh <(wget -O - https://raw.githubusercontent.com/nickolaich/podkop-xhttp-patch/main/install.sh)
+sh <(wget -O - https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh)
 ```
 
 ### What the installer does
