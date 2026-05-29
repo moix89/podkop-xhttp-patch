@@ -154,7 +154,6 @@ XHTTP_BLOCK_EOF
             in_func && after_grpc==2 && /^[[:space:]]*\*\)/ { print NR; exit }
         ' "$FACADE")
 
-        log "[1/3] debug: INSERT_LINE='$INSERT_LINE'"
         if [ -z "$INSERT_LINE" ]; then
             rm -f "$BLOCK_FILE"
             err "xhttp: cannot find insertion point (*) after grpc) in $FACADE"
