@@ -201,46 +201,32 @@ else
     )
 SPX_BLOCK_EOF
 
-    # Find the line number of the _add_outbound_security call inside vless) branch.
-    # The vless) branch is the only one where _add_outbound_security is immediately
-    # followed by _add_outbound_transport on the very next line.
-    # We find the line number of _add_outbound_transport that comes right after
-    # _add_outbound_security, then insert the spider_x block before that line.
-    TRANSPORT_LINE=$(awk '
-        prev ~ /_add_outbound_security/ && $0 ~ /_add_outbound_transport/ { print NR; exit }
-        { prev=$0 }
-    ' "$FACADE")
-
-    if [ -z "$TRANSPORT_LINE" ]; then
-        rm -f "$SPX_BLOCK_FILE"
-        err "spider_x: could not find _add_outbound_transport after _add_outbound_security in $FACADE"
-    else
-        # Insert block before line TRANSPORT_LINE using awk line counter
-        awk -v insert_before="$TRANSPORT_LINE" '
-        {
-            if (NR == insert_before) {
-                while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
-                close(SPX_BLOCK_FILE)
-            }
-            print $0
+    # Single-pass awk: track previous line, insert spider_x block before
+    # _add_outbound_transport when the previous line was _add_outbound_security.
+    # This is the vless) branch pattern — confirmed working on Podkop 0.7.17.
+    awk '
+    BEGIN { inserted=0; prev="" }
+    {
+        if (!inserted && prev ~ /_add_outbound_security/ && $0 ~ /_add_outbound_transport/) {
+            while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
+            close(SPX_BLOCK_FILE)
+            inserted=1
         }
-        ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
-    fi
+        print $0
+        prev=$0
+    }
+    ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
 
     rm -f "$SPX_BLOCK_FILE"
 
-    if [ -f "${FACADE}.tmp" ]; then
-        sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed (spider_x): $FACADE"; }
+    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed (spider_x): $FACADE"; }
 
-        if [ -f "${FACADE}.tmp" ]; then
-            if ! grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
-                rm -f "${FACADE}.tmp"
-                err "spider_x block not found in patched file"
-            else
-                mv "${FACADE}.tmp" "$FACADE"
-                log "[2/3] spider_x patch applied."
-            fi
-        fi
+    if ! grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
+        rm -f "${FACADE}.tmp"
+        err "spider_x block not inserted — pattern not found in $FACADE"
+    else
+        mv "${FACADE}.tmp" "$FACADE"
+        log "[2/3] spider_x patch applied."
     fi
 fi
 
