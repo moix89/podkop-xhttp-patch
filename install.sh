@@ -11,7 +11,7 @@ BACKUP_DIR="/root"
 
 # Markers: unique strings present only after the respective patch is applied.
 # Changing a marker forces re-apply even if an older version of the patch exists.
-MARKER_XHTTP="tonumber"
+MARKER_XHTTP="sc_max_each_post_bytes \$sc_max_each_post_bytes"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
 
@@ -80,7 +80,8 @@ else
         # Values from extra may be quoted strings like "1000000" — strip quotes, use as numbers
         xhttp_sc_max_each_post_bytes="${xhttp_extra_max:-1000000}"
         xhttp_sc_min_posts_interval_ms="${xhttp_extra_min:-30}"
-        # Remove surrounding quotes if present (e.g. "1000000" -> 1000000)
+        # sc_* fields must be strings (not numbers) per sing-box-extended schema
+        # Strip surrounding quotes from extra values just in case
         xhttp_sc_max_each_post_bytes=$(echo "$xhttp_sc_max_each_post_bytes" | tr -d '"')
         xhttp_sc_min_posts_interval_ms=$(echo "$xhttp_sc_min_posts_interval_ms" | tr -d '"')
 
@@ -96,8 +97,8 @@ else
                 transport: (
                     { type: "xhttp", path: $path, mode: $mode, host: $host }
                     + if $x_padding_bytes != "" then { x_padding_bytes: $x_padding_bytes } else {} end
-                    + if $sc_max_each_post_bytes != "" then { sc_max_each_post_bytes: ($sc_max_each_post_bytes | tonumber) } else {} end
-                    + if $sc_min_posts_interval_ms != "" then { sc_min_posts_interval_ms: ($sc_min_posts_interval_ms | tonumber) } else {} end
+                    + if $sc_max_each_post_bytes != "" then { sc_max_each_post_bytes: $sc_max_each_post_bytes } else {} end
+                    + if $sc_min_posts_interval_ms != "" then { sc_min_posts_interval_ms: $sc_min_posts_interval_ms } else {} end
                 )
             }'
         )
@@ -174,64 +175,35 @@ XHTTP_BLOCK_EOF
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PATCH 2 — spider_x for Reality
-# Adds spider_x parsing from spx URL param inside the vless) branch of
-# sing_box_cf_add_proxy_outbound(), right after _add_outbound_security is called.
-# Default: "/" when spx is absent or empty.
-# Idempotent: marker = spider_x
+# PATCH 2 — remove spider_x if previously applied
+# sing-box 1.13.12 does NOT support spider_x field in tls.reality.
+# If the old patch added it, remove it now.
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_SPIDER" "$FACADE"; then
-    log "[2/3] spider_x patch — already installed, skipping."
-else
-    log "[2/3] Adding spider_x (Reality spx) support..."
+    log "[2/3] Removing spider_x block (not supported by sing-box 1.13.12+)..."
 
-    SPX_BLOCK_FILE="/tmp/_podkop_spx_block.$$"
-    # In sing_box_cf_add_proxy_outbound() the local variable is $tag, not $outbound_tag.
-    # The jq block must use $tag to match the correct outbound.
-    cat > "$SPX_BLOCK_FILE" << 'SPX_BLOCK_EOF'
-    local spx spider_x
-    spx=$(url_get_query_param "$url" "spx")
-    # url-decode %2F -> /  (busybox-compatible, no Python needed)
-    spider_x=$(printf '%s' "$spx" | sed 's/%2F/\//g; s/%2f/\//g')
-    [ -z "$spider_x" ] && spider_x="/"
-    config=$(echo "$config" | jq \
-        --arg tag "$tag" \
-        --arg spider_x "$spider_x" '
-        if (.outbounds[] | select(.tag == $tag).tls.reality) then
-            (.outbounds[] | select(.tag == $tag).tls.reality.spider_x) = $spider_x
-        else . end
-        '
-    )
-SPX_BLOCK_EOF
-
-    # Single-pass awk: track previous line, insert spider_x block before
-    # _add_outbound_transport when the previous line was _add_outbound_security.
-    # This is the vless) branch pattern — confirmed working on Podkop 0.7.17.
+    # Remove lines from "local spx spider_x" through the closing ) of the jq call
     awk '
-    BEGIN { inserted=0; prev="" }
+    BEGIN { skip=0 }
+    /[[:space:]]*local spx spider_x/ { skip=1 }
     {
-        if (!inserted && prev ~ /_add_outbound_security/ && $0 ~ /_add_outbound_transport/) {
-            while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
-            close(SPX_BLOCK_FILE)
-            inserted=1
-        }
-        print $0
-        prev=$0
+        if (!skip) { print $0 }
     }
-    ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+    /^[[:space:]]*\)[[:space:]]*$/ && skip { skip=0; next }
+    ' "$FACADE" > "${FACADE}.tmp"
 
-    rm -f "$SPX_BLOCK_FILE"
+    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed removing spider_x: $FACADE"; }
 
-    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed (spider_x): $FACADE"; }
-
-    if ! grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
+    if grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
         rm -f "${FACADE}.tmp"
-        err "spider_x block not inserted — pattern not found in $FACADE"
+        err "spider_x block removal failed"
     else
         mv "${FACADE}.tmp" "$FACADE"
-        log "[2/3] spider_x patch applied."
+        log "[2/3] spider_x block removed."
     fi
+else
+    log "[2/3] spider_x — not present, skipping."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
