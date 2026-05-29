@@ -34,6 +34,18 @@ command -v sing-box >/dev/null 2>&1 \
 [ -f "$FACADE" ] || die "Not found: $FACADE — is Podkop installed?"
 [ -f "$PODKOP" ] || die "Not found: $PODKOP — is Podkop installed?"
 
+# ── detect Podkop version ─────────────────────────────────────────────────────
+
+PODKOP_VER=$(opkg list-installed 2>/dev/null | awk '/^podkop /{print $3}')
+[ -z "$PODKOP_VER" ] && PODKOP_VER=$(grep -m1 'PODKOP_VERSION=' "$PODKOP" 2>/dev/null | cut -d'"' -f2)
+[ -z "$PODKOP_VER" ] && PODKOP_VER="unknown"
+log "Podkop version: $PODKOP_VER"
+case "$PODKOP_VER" in
+    0.7.17|0.7.18) ;;
+    unknown) warn "Could not detect Podkop version — proceeding anyway." ;;
+    *) warn "Podkop $PODKOP_VER is untested. Patch may not apply correctly." ;;
+esac
+
 # ── backup ────────────────────────────────────────────────────────────────────
 
 TS="$(date +%Y%m%d_%H%M%S)"
