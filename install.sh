@@ -36,10 +36,9 @@ command -v sing-box >/dev/null 2>&1 \
 
 # ── detect Podkop version ─────────────────────────────────────────────────────
 
-PODKOP_VER=$(opkg list-installed 2>/dev/null | awk '/^podkop /{print $3}')
+PODKOP_VER=$("$PODKOP" show_version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+[ -z "$PODKOP_VER" ] && PODKOP_VER=$(opkg list-installed 2>/dev/null | awk '/^podkop /{print $3}')
 [ -z "$PODKOP_VER" ] && PODKOP_VER=$(opkg info podkop 2>/dev/null | awk '/^Version:/{print $2}')
-[ -z "$PODKOP_VER" ] && PODKOP_VER=$(grep -m1 'PODKOP_VERSION\|podkop_version' "$PODKOP" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-[ -z "$PODKOP_VER" ] && PODKOP_VER=$("$PODKOP" show_version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 [ -z "$PODKOP_VER" ] && PODKOP_VER="unknown"
 log "Podkop version: $PODKOP_VER"
 case "$PODKOP_VER" in
