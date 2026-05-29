@@ -201,23 +201,23 @@ else
     )
 SPX_BLOCK_EOF
 
-    # Insert after the _add_outbound_security call inside the vless) branch.
-    # In the original file the call looks like:
+    # Insert after the first _add_outbound_security call that is followed
+    # on the very next non-empty line by _add_outbound_transport.
+    # This is always the vless) branch in the original Podkop file:
     #   config=$(_add_outbound_security "$config" "$tag" "$url")
-    # We match on _add_outbound_security and "$tag" (not $outbound_tag).
+    #   config=$(_add_outbound_transport "$config" "$tag" "$url")
     awk '
-    BEGIN { inserted=0; in_vless=0 }
+    BEGIN { inserted=0; prev="" }
     {
-        if ($0 ~ /^[[:space:]]*vless\)/) { in_vless=1 }
-        if (in_vless && $0 ~ /^[[:space:]]*(ss|trojan|socks|hysteria|http|\*)\)/) { in_vless=0 }
-
-        print $0
-
-        if (in_vless && !inserted && $0 ~ /_add_outbound_security/ && $0 ~ /\$tag/) {
+        # When we see _add_outbound_transport right after _add_outbound_security,
+        # the previous line was the security call — insert block between them.
+        if (!inserted && $0 ~ /_add_outbound_transport/ && prev ~ /_add_outbound_security/) {
             while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
             close(SPX_BLOCK_FILE)
             inserted=1
         }
+        print $0
+        if ($0 ~ /[^[:space:]]/) { prev=$0 }
     }
     ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
 
