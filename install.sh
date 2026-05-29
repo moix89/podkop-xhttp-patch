@@ -14,6 +14,7 @@ BACKUP_DIR="/root"
 MARKER_XHTTP="xhttp_sc_min_posts_interval_ms"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
+MARKER_CMPFIX="major.*gt 1.*|| \\\\"
 
 ERRORS=0
 
@@ -215,14 +216,14 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PATCH 3 — sing-box version detection in /usr/bin/podkop
-# Strips -extended-* suffix so version comparison works with sing-box-extended.
-# Idempotent: marker = cut -d'-' -f1
+# 3a/3b: strip -extended-* suffix (marker: cut -d'-' -f1)
+# 3c:    fix version comparison operator precedence in ash (marker: major.*gt 1.*|| \\)
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_VERSION" "$PODKOP"; then
-    log "[3/3] Version detection fix — already installed, skipping."
+    log "[3/3] Version string fix — already installed, skipping."
 else
-    log "[3/3] Fixing sing-box version detection..."
+    log "[3/3] Fixing sing-box version string parsing..."
 
     cp "$PODKOP" "${PODKOP}.tmp"
 
@@ -250,21 +251,6 @@ else
     ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
     mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
 
-    # 3c. Version comparison: replace subshell (...)  with POSIX-safe { ...; }
-    # Original two-line pattern:
-    #   if [ "$major" -gt 1 ] || ([ "$major" -eq 1 ] && [ "$minor" -gt 12 ]) || \
-    #      ([ "$major" -eq 1 ] && [ "$minor" -eq 12 ] && [ "$patch" -ge 4 ]); then
-    awk '
-    /if \[ "\$major" -gt 1 \] \|\| \(/ {
-        getline  # discard second line of original pattern
-        print "    if [ \"$major\" -gt 1 ] || \\"
-        print "       { [ \"$major\" -eq 1 ] && [ \"$minor\" -gt 12 ]; } || \\"
-        print "       { [ \"$major\" -eq 1 ] && [ \"$minor\" -eq 12 ] && [ \"$patch\" -ge 4 ]; }; then"
-        next
-    }
-    { print $0 }
-    ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
-    mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
 
     sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed: $PODKOP"; }
 
@@ -274,7 +260,46 @@ else
     else
         mv "${PODKOP}.tmp" "$PODKOP"
         chmod +x "$PODKOP"
-        log "[3/3] Version detection fix applied."
+        log "[3/3] Version string fix applied."
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATCH 4 — fix version comparison operator precedence in ash
+# In ash, && binds tighter than ||, so the multi-line condition without braces
+# evaluates incorrectly (1.13.x fails the check despite being > 1.12.4).
+# Idempotent: marker = major.*gt 1.*|| \\
+# ─────────────────────────────────────────────────────────────────────────────
+
+if grep -qE 'major.*-gt 1.*\|\| \\' "$PODKOP"; then
+    log "[4/4] Version comparison fix — already installed, skipping."
+else
+    log "[4/4] Fixing version comparison operator precedence..."
+
+    cp "$PODKOP" "${PODKOP}.tmp"
+
+    awk '
+    /if \[ "\$major" -gt 1 \] \|\|$/ {
+        getline
+        getline
+        print "            if [ \"$major\" -gt 1 ] || \\"
+        print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -gt 12 ]; } || \\"
+        print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -eq 12 ] && [ \"$patch\" -ge 4 ]; }; then"
+        next
+    }
+    { print $0 }
+    ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
+    mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
+
+    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed (cmp fix): $PODKOP"; }
+
+    if ! grep -qE 'major.*-gt 1.*\|\| \\' "${PODKOP}.tmp"; then
+        rm -f "${PODKOP}.tmp"
+        err "Version comparison fix not applied — pattern not found in $PODKOP"
+    else
+        mv "${PODKOP}.tmp" "$PODKOP"
+        chmod +x "$PODKOP"
+        log "[4/4] Version comparison fix applied."
     fi
 fi
 
