@@ -35,13 +35,12 @@
 ---
 
 > [!WARNING]
-> **Важно про ссылки VLESS XHTTP**
+> **Важно: постквантовое шифрование не поддерживается**
 >
-> Podkop **не поддерживает** постквантовое шифрование (`encryption=mlkem768x25519plus...`).
-> Если ваша ссылка содержит этот параметр — соединение не установится.
+> Podkop **не поддерживает** `encryption=mlkem768x25519plus` и другие постквантовые алгоритмы.
+> Если ваша ссылка содержит этот параметр — соединение не установится, пинг будет N/A.
 >
-> В настройках пользователя на сервере (3x-ui и др.) установите `encryption = none`.
-> Ссылка должна содержать `encryption=none` или не содержать `encryption` вовсе.
+> В панели сервера (3x-ui и др.) на вкладке **Протокол** установите **Шифрование = none**, кнопку **Очистить** — убрать выбранные алгоритмы. Ссылка должна содержать `encryption=none`.
 
 ---
 
@@ -74,18 +73,41 @@ wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-b
 wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
 ```
 
-#### Шаг 4 — Проверить
+#### Шаг 4 — Настроить ссылку в 3x-ui
+
+**Вкладка Протокол:**
+
+- Шифрование: `none`
+- Нажать **Очистить** — убрать X25519 и ML-KEM-768
+
+**Вкладка Поток:**
+
+- Транспорт: `XHTTP`
+- Режим: `auto`
+- Padding Bytes: `100-1000`
+
+**Вкладка Безопасность:**
+
+- Тип: `Reality`
+- uTLS: `chrome`
+
+Скопировать ссылку — она должна содержать `encryption=none&...type=xhttp`.
+
+#### Шаг 5 — Добавить ссылку в Podkop
+
+В LuCI → Podkop создать секцию с типом подключения **URL** или **URLTest**, вставить ссылку.
+
+#### Шаг 6 — Проверить
 
 ```sh
 podkop global_check
 sing-box check -c /etc/sing-box/config.json
 jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
-jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 ```
 
 ---
 
-### Что исправляет
+### Что исправляет патч
 
 **Исправление 1 — xhttp transport** (`sing_box_config_facade.sh`)
 
@@ -95,48 +117,45 @@ jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 - `host` — из `host=`
 - `mode` — из `mode=`, дефолт: `auto`
 - `x_padding_bytes` — из `xPaddingBytes=` или `extra.xPaddingBytes`, дефолт: `100-1000`
-- `sc_max_each_post_bytes` — из `extra.scMaxEachPostBytes`, дефолт: `1000000`
-- `sc_min_posts_interval_ms` — из `extra.scMinPostsIntervalMs`, дефолт: `30`
+- `sc_max_each_post_bytes` — из `extra.scMaxEachPostBytes`, дефолт: `"1000000"` (строка)
+- `sc_min_posts_interval_ms` — из `extra.scMinPostsIntervalMs`, дефолт: `"30"` (строка)
 - `alpn` — из `alpn=`, дефолт: `h2,http/1.1`
 
-**Исправление 2 — spider_x для Reality** (`sing_box_config_facade.sh`)
+**Исправление 2 — версия sing-box-extended** (`/usr/bin/podkop`)
 
-Парсит `spx` из VLESS URL и записывает в `tls.reality.spider_x`. Без этого поле всегда отсутствует в конфиге.
+Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.12-extended-2.1.3` читалось как `1.13.12`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус.
 
-- `spx=%2F` → `"spider_x": "/"`
-- `spx=%2Fabc123` → `"spider_x": "/abc123"`
-- `spx` отсутствует → `"spider_x": "/"`
-
-Патч берёт значение из ссылки как есть — **не принудительно заменяет** на `/`.
-
-**Исправление 3 — версия sing-box-extended** (`/usr/bin/podkop`)
-
-Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.12-extended-2.1.3` читалось как `1.13.11`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус вместо ложной ошибки.
-
-> Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии. Фактическая версия видна в выводе `podkop global_check`.
+> Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии.
 
 ---
 
 ### Генерируемый конфиг
+
+Для ссылки `vless://...encryption=none&type=xhttp...` Podkop генерирует:
 
 ```json
 {
   "type": "vless",
   "tag": "...",
   "tls": {
+    "enabled": true,
+    "server_name": "www.amd.com",
     "alpn": ["h2", "http/1.1"],
     "reality": {
       "enabled": true,
       "public_key": "...",
-      "short_id": "...",
-      "spider_x": "/"
+      "short_id": "..."
+    },
+    "utls": {
+      "enabled": true,
+      "fingerprint": "chrome"
     }
   },
   "transport": {
     "type": "xhttp",
-    "path": "/v1/api",
+    "path": "/v1/excuse/api",
     "mode": "auto",
-    "host": "example.com",
+    "host": "ruvds.gazrul.ru",
     "x_padding_bytes": "100-1000",
     "sc_max_each_post_bytes": "1000000",
     "sc_min_posts_interval_ms": "30"
@@ -146,30 +165,173 @@ jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 
 ---
 
-### Как работает установщик
+### Возможные ошибки и решения
 
-1. Проверяет наличие `jq`, `sed`, `awk`, `sing-box` и обоих файлов Podkop
-1. Создаёт backup с timestamp в `/root/`
-1. Вставляет или обновляет блок `xhttp)` (маркер: `sc_min_posts_interval_ms`)
-1. Добавляет парсинг `spider_x` после `_add_outbound_security` в ветке `vless)` (маркер: `spider_x`)
-1. Патчит парсинг версии в `check_requirements` и `check_sing_box` (маркер: `cut -d'-' -f1`)
-1. Патчит сравнение версии: заменяет `(...)` на `{ ...; }`
-1. Проверяет синтаксис обоих файлов через `sh -n`
-1. Перезапускает Podkop
-1. Выводит команды для проверки
+#### `Unknown transport 'xhttp' detected`
 
-Скрипт **идемпотентен** — повторный запуск безопасен, каждый патч проверяет свой маркер.
+Патч не применён или слетел после обновления Podkop.
+
+```sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
 
 ---
 
-### Откат
+#### `Sing-box version is not compatible (older than 1.12.4)`
+
+Патч версии не применён, либо установлен стандартный sing-box вместо extended.
+
+Проверить:
 
 ```sh
-ls /root/*.backup.*
-cp /root/sing_box_config_facade.sh.backup.TIMESTAMP /usr/lib/podkop/sing_box_config_facade.sh
-cp /root/podkop.backup.TIMESTAMP /usr/bin/podkop
+sing-box version
+```
+
+Должно быть `1.13.x-extended-...`. Если нет — установить sing-box-extended:
+
+```sh
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+```
+
+Затем переустановить патч.
+
+---
+
+#### `Sing-box configuration is invalid. Aborted`
+
+Причины:
+
+1. **`encryption=mlkem...`** в ссылке — убрать постквантовое шифрование, установить `encryption=none`
+2. **`spider_x`** в конфиге — старый патч добавлял это поле, sing-box 1.13.12 его не поддерживает. Переустановить патч — он удалит `spider_x` автоматически
+3. **Сломанный файл** после многократных патчей — восстановить из backup (см. ниже)
+
+Как проверить конкретную ошибку:
+
+```sh
+# Найти временный файл конфига
+ls /tmp/tmp.*
+# Проверить его
+sing-box check -c /tmp/tmp.XXXXXX 2>&1
+```
+
+---
+
+#### `Permission denied` при запуске podkop
+
+Патч потерял бит исполнения при записи файла.
+
+```sh
+chmod +x /usr/bin/podkop
 /etc/init.d/podkop restart
 ```
+
+---
+
+#### Пинг N/A в Clash API / Yacd
+
+1. Проверить что ссылка содержит `encryption=none`
+2. Проверить доступность сервера:
+
+```sh
+sing-box check -c /etc/sing-box/config.json 2>&1
+```
+
+1. Проверить что конфиг сгенерировался правильно:
+
+```sh
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+```
+
+---
+
+#### Патч слетел после обновления Podkop через opkg
+
+Это нормально — `opkg upgrade podkop` перезаписывает файлы. Просто запустить патч снова:
+
+```sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+---
+
+### Откат из backup
+
+Каждый запуск патча создаёт backup с timestamp в `/root/`.
+
+```sh
+# Посмотреть список backup-файлов
+ls -la /root/*.backup.*
+
+# Восстановить sing_box_config_facade.sh (подставьте timestamp)
+cp /root/sing_box_config_facade.sh.backup.20260529_181427 \
+   /usr/lib/podkop/sing_box_config_facade.sh
+
+# Восстановить podkop
+cp /root/podkop.backup.20260529_181427 /usr/bin/podkop
+chmod +x /usr/bin/podkop
+
+# Перезапустить
+/etc/init.d/podkop restart
+```
+
+> Берите самый ранний (наименьший по размеру) backup — это оригинальный файл Podkop без патчей.
+
+---
+
+### Откат к полностью чистому Podkop
+
+Если всё сломалось и нужно начать с нуля:
+
+```sh
+# Переустановить Podkop через opkg
+opkg update
+opkg install --force-reinstall podkop luci-app-podkop
+
+# Проверить что файл чистый
+grep -c "xhttp" /usr/lib/podkop/sing_box_config_facade.sh
+# Должно вернуть 0
+
+# Затем снова установить sing-box-extended и патч
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+---
+
+### Диагностика
+
+```sh
+# Версии компонентов
+cat /etc/openwrt_release | grep VERSION
+opkg list-installed | grep podkop
+sing-box version
+
+# Проверка патча
+grep -c "xhttp_sc_min_posts_interval_ms" /usr/lib/podkop/sing_box_config_facade.sh
+# Должно вернуть 4+ если патч применён
+
+# Общая проверка
+podkop global_check
+
+# Конфиг
+sing-box check -c /etc/sing-box/config.json 2>&1
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
+
+# Логи
+logread | grep podkop | tail -30
+```
+
+---
+
+### Совместимость
+
+- OpenWrt 25.12.2
+- Роутер: Xiaomi Redmi AX6S
+- Podkop 0.7.18
+- sing-box-extended 1.13.12-extended-2.1.3
+- Протокол: VLESS Reality XHTTP
+- Режим: URLTest failover / одиночный URL
 
 ---
 
@@ -210,13 +372,12 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 ---
 
 > [!WARNING]
-> **Important: VLESS XHTTP link format**
+> **Important: post-quantum encryption is not supported**
 >
-> Podkop does **not support** post-quantum encryption (`encryption=mlkem768x25519plus...`).
-> If your link contains this parameter — the connection will not work.
+> Podkop does **not support** `encryption=mlkem768x25519plus` or other post-quantum algorithms.
+> If your link contains this parameter — the connection will fail with N/A ping.
 >
-> In your server panel (3x-ui etc.) set `encryption = none`.
-> The link must contain `encryption=none` or no `encryption` parameter at all.
+> In your server panel (3x-ui etc.) on the **Protocol** tab set **Encryption = none** and click **Clear** to remove selected algorithms. The link must contain `encryption=none`.
 
 ---
 
@@ -245,90 +406,111 @@ wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-b
 wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
 ```
 
-#### Step 4 — Verify
+#### Step 4 — Configure the link in 3x-ui
+
+**Protocol tab**: Encryption = `none`, click Clear (remove X25519 and ML-KEM-768)
+
+**Stream tab**: Transport = `XHTTP`, Mode = `auto`, Padding Bytes = `100-1000`
+
+**Security tab**: Type = `Reality`, uTLS = `chrome`
+
+Copy the link — it must contain `encryption=none&...type=xhttp`.
+
+#### Step 5 — Verify
 
 ```sh
 podkop global_check
 sing-box check -c /etc/sing-box/config.json
 jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
-jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 ```
 
 ---
 
-### What it fixes
+### Common issues
 
-**Fix 1 — xhttp transport** (`sing_box_config_facade.sh`)
+#### `Unknown transport 'xhttp' detected`
 
-Adds the `xhttp)` branch to `_add_outbound_transport()`. Without it Podkop crashes with `Unknown transport 'xhttp' detected`. Parameters are read from the VLESS URL with fallback defaults:
-
-- `path` — from `path=`
-- `host` — from `host=`
-- `mode` — from `mode=`, default: `auto`
-- `x_padding_bytes` — from `xPaddingBytes=` or `extra.xPaddingBytes`, default: `100-1000`
-- `sc_max_each_post_bytes` — from `extra.scMaxEachPostBytes`, default: `1000000`
-- `sc_min_posts_interval_ms` — from `extra.scMinPostsIntervalMs`, default: `30`
-- `alpn` — from `alpn=`, default: `h2,http/1.1`
-
-**Fix 2 — spider_x for Reality** (`sing_box_config_facade.sh`)
-
-Parses `spx` from the VLESS URL and writes it to `tls.reality.spider_x`. Without this fix `spider_x` is always missing.
-
-- `spx=%2F` → `"spider_x": "/"`
-- `spx=%2Fabc123` → `"spider_x": "/abc123"`
-- `spx` absent → `"spider_x": "/"`
-
-The patch uses the value from the link as-is — does **not** force `/`.
-
-**Fix 3 — sing-box-extended version detection** (`/usr/bin/podkop`)
-
-Strips `-extended-2.x.x` suffix so `1.13.12-extended-2.1.3` is parsed as `1.13.11`. Also replaces subshell `(...)` comparison with POSIX-safe `{ ...; }`. After this `podkop global_check` shows green.
+Patch not applied or reset after Podkop update. Re-run the install command.
 
 ---
 
-### Generated sing-box config
+#### `Sing-box version is not compatible`
 
-```json
-{
-  "type": "vless",
-  "tag": "...",
-  "tls": {
-    "alpn": ["h2", "http/1.1"],
-    "reality": {
-      "enabled": true,
-      "public_key": "...",
-      "short_id": "...",
-      "spider_x": "/"
-    }
-  },
-  "transport": {
-    "type": "xhttp",
-    "path": "/v1/api",
-    "mode": "auto",
-    "host": "example.com",
-    "x_padding_bytes": "100-1000",
-    "sc_max_each_post_bytes": "1000000",
-    "sc_min_posts_interval_ms": "30"
-  }
-}
-```
-
----
-
-### After Podkop updates
-
-If Podkop is updated via `opkg`, both files are overwritten and patches are lost. Re-run the install command to re-apply.
-
----
-
-### Rollback
+Either the version patch failed or standard sing-box is installed instead of extended.
 
 ```sh
-ls /root/*.backup.*
-cp /root/sing_box_config_facade.sh.backup.TIMESTAMP /usr/lib/podkop/sing_box_config_facade.sh
+sing-box version  # must show 1.13.x-extended-...
+```
+
+If not — install sing-box-extended first, then re-run the patch.
+
+---
+
+#### `Sing-box configuration is invalid`
+
+1. Link contains `encryption=mlkem...` — set `encryption=none` in server panel
+2. Old patch left `spider_x` field — re-run patch, it removes it automatically
+3. File corrupted by repeated patching — restore from backup (see below)
+
+```sh
+ls /tmp/tmp.*
+sing-box check -c /tmp/tmp.XXXXXX 2>&1
+```
+
+---
+
+#### N/A ping in Clash API
+
+1. Check link has `encryption=none`
+2. Check config was generated correctly:
+
+```sh
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+```
+
+---
+
+### Rollback from backup
+
+```sh
+ls -la /root/*.backup.*
+
+cp /root/sing_box_config_facade.sh.backup.TIMESTAMP \
+   /usr/lib/podkop/sing_box_config_facade.sh
+
 cp /root/podkop.backup.TIMESTAMP /usr/bin/podkop
+chmod +x /usr/bin/podkop
+
 /etc/init.d/podkop restart
 ```
+
+Use the earliest (smallest) backup — that is the original unpatched Podkop file.
+
+---
+
+### Full reset
+
+```sh
+opkg update
+opkg install --force-reinstall podkop luci-app-podkop
+
+grep -c "xhttp" /usr/lib/podkop/sing_box_config_facade.sh
+# Must return 0
+
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+---
+
+### Compatibility
+
+- OpenWrt 25.12.2
+- Router: Xiaomi Redmi AX6S
+- Podkop 0.7.18
+- sing-box-extended 1.13.12-extended-2.1.3
+- Protocol: VLESS Reality XHTTP
+- Mode: URLTest failover / single URL
 
 ---
 
