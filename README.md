@@ -20,6 +20,9 @@ One-command patch that fixes two issues in [Podkop](https://github.com/itdoginfo
 ssh root@192.168.1.1
 ```
 
+> Replace `192.168.1.1` with your router's IP if different.
+> Xiaomi AX6S default is `192.168.31.1`.
+
 #### Step 2 — Install sing-box-extended (replaces the stock sing-box, adds xHTTP support)
 
 ```sh
@@ -204,6 +207,57 @@ MIT — see [LICENSE](LICENSE).
 
 Патч одной командой, который устраняет два бага в [Podkop](https://github.com/itdoginfo/podkop) при использовании ссылок `vless://...type=xhttp...` с **URLTest** на OpenWrt + sing-box-extended.
 
+---
+
+### Быстрый старт (пошагово)
+
+> Все команды выполняются на роутере через SSH.
+
+#### Шаг 1 — Подключиться к роутеру по SSH
+
+С компьютера в терминале:
+
+```sh
+ssh root@192.168.1.1
+```
+
+> Если у вашего роутера другой IP — замените `192.168.1.1` на нужный.
+> У Xiaomi AX6S стандартный адрес `192.168.31.1`.
+
+#### Шаг 2 — Установить sing-box-extended
+
+Заменяет стандартный sing-box на расширенную версию с поддержкой xHTTP:
+
+```sh
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+```
+
+#### Шаг 3 — Установить патч
+
+```sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+#### Шаг 4 — Проверить
+
+```sh
+podkop global_check
+```
+
+Ожидаемый результат:
+
+```text
+✅ Sing-box version is compatible (newer than 1.12.4)
+```
+
+После добавления ссылок `vless://...type=xhttp...` в Podkop — проверить что конфиг сгенерировался правильно:
+
+```sh
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+```
+
+---
+
 ### Что исправляет
 
 | # | Файл | Исправление |
@@ -221,36 +275,6 @@ MIT — see [LICENSE](LICENSE).
 вместо ложной красной ошибки.
 
 > **Примечание:** текст `(newer than 1.12.4)` — это название условия совместимости, а не номер установленной версии. Фактическая версия отображается в выводе `podkop global_check`.
-
----
-
-### Требования
-
-Сначала установите **sing-box-extended** — он обеспечивает движок xHTTP transport, которого нет в стандартном пакете `sing-box`:
-
-```sh
-sh <(wget -O - https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh)
-```
-
-> Проверено с: sing-box-extended **1.13.11-extended-2.1.0**
-
----
-
-### Установка
-
-**Вариант 1 — однострочник** (требует подстановки процессов, работает в большинстве оболочек):
-
-```sh
-sh <(wget -O - https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh)
-```
-
-**Вариант 2 — явное скачивание** (всегда работает на `ash` в OpenWrt):
-
-```sh
-wget -O /tmp/podkop-xhttp-install.sh \
-  https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh
-sh /tmp/podkop-xhttp-install.sh
-```
 
 ---
 
