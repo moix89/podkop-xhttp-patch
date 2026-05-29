@@ -201,36 +201,46 @@ else
     )
 SPX_BLOCK_EOF
 
-    # Insert after the first _add_outbound_security call that is followed
-    # on the very next non-empty line by _add_outbound_transport.
-    # This is always the vless) branch in the original Podkop file:
-    #   config=$(_add_outbound_security "$config" "$tag" "$url")
-    #   config=$(_add_outbound_transport "$config" "$tag" "$url")
-    awk '
-    BEGIN { inserted=0; prev="" }
-    {
-        # When we see _add_outbound_transport right after _add_outbound_security,
-        # the previous line was the security call — insert block between them.
-        if (!inserted && $0 ~ /_add_outbound_transport/ && prev ~ /_add_outbound_security/) {
-            while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
-            close(SPX_BLOCK_FILE)
-            inserted=1
+    # Find the line number of the _add_outbound_security call inside vless) branch.
+    # The vless) branch is the only one where _add_outbound_security is immediately
+    # followed by _add_outbound_transport on the very next line.
+    # We find the line number of _add_outbound_transport that comes right after
+    # _add_outbound_security, then insert the spider_x block before that line.
+    TRANSPORT_LINE=$(awk '
+        prev ~ /_add_outbound_security/ && $0 ~ /_add_outbound_transport/ { print NR; exit }
+        { prev=$0 }
+    ' "$FACADE")
+
+    if [ -z "$TRANSPORT_LINE" ]; then
+        rm -f "$SPX_BLOCK_FILE"
+        err "spider_x: could not find _add_outbound_transport after _add_outbound_security in $FACADE"
+    else
+        # Insert block before line TRANSPORT_LINE using awk line counter
+        awk -v insert_before="$TRANSPORT_LINE" '
+        {
+            if (NR == insert_before) {
+                while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
+                close(SPX_BLOCK_FILE)
+            }
+            print $0
         }
-        print $0
-        if ($0 ~ /[^[:space:]]/) { prev=$0 }
-    }
-    ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+        ' SPX_BLOCK_FILE="$SPX_BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+    fi
 
     rm -f "$SPX_BLOCK_FILE"
 
-    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed (spider_x): $FACADE"; }
+    if [ -f "${FACADE}.tmp" ]; then
+        sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed (spider_x): $FACADE"; }
 
-    if ! grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
-        rm -f "${FACADE}.tmp"
-        err "spider_x block not inserted — _add_outbound_security call pattern not found in vless) branch"
-    else
-        mv "${FACADE}.tmp" "$FACADE"
-        log "[2/3] spider_x patch applied."
+        if [ -f "${FACADE}.tmp" ]; then
+            if ! grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
+                rm -f "${FACADE}.tmp"
+                err "spider_x block not found in patched file"
+            else
+                mv "${FACADE}.tmp" "$FACADE"
+                log "[2/3] spider_x patch applied."
+            fi
+        fi
     fi
 fi
 
