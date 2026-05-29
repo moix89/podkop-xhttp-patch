@@ -34,6 +34,17 @@
 
 ---
 
+> [!WARNING]
+> **Важно про ссылки VLESS XHTTP**
+>
+> Podkop **не поддерживает** постквантовое шифрование (`encryption=mlkem768x25519plus...`).
+> Если ваша ссылка содержит этот параметр — соединение не установится.
+>
+> В настройках пользователя на сервере (3x-ui и др.) установите `encryption = none`.
+> Ссылка должна содержать `encryption=none` или не содержать `encryption` вовсе.
+
+---
+
 ### Быстрый старт
 
 > Все команды выполняются на роутере через SSH.
@@ -195,6 +206,17 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > If your versions **differ** — the patch may fail to apply, apply incorrectly and break Podkop, or require manual adjustment.
 >
 > When Podkop is updated via `opkg`, the patch is **overwritten** — re-run the installer to re-apply.
+
+---
+
+> [!WARNING]
+> **Important: VLESS XHTTP link format**
+>
+> Podkop does **not support** post-quantum encryption (`encryption=mlkem768x25519plus...`).
+> If your link contains this parameter — the connection will not work.
+>
+> In your server panel (3x-ui etc.) set `encryption = none`.
+> The link must contain `encryption=none` or no `encryption` parameter at all.
 
 ---
 
