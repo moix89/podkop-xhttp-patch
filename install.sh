@@ -11,7 +11,7 @@ BACKUP_DIR="/root"
 
 # Markers: unique strings present only after the respective patch is applied.
 # Changing a marker forces re-apply even if an older version of the patch exists.
-MARKER_XHTTP="sc_max_each_post_bytes \$sc_max_each_post_bytes"
+MARKER_XHTTP="xhttp_sc_min_posts_interval_ms"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
 
@@ -145,20 +145,27 @@ XHTTP_BLOCK_EOF
         ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
     else
         # Fresh insert before *) after grpc ;; closes inside _add_outbound_transport()
-        awk '
-        BEGIN { in_func=0; after_grpc=0; inserted=0 }
-        {
-            if ($0 ~ /_add_outbound_transport\(\)/) { in_func=1 }
-            if (in_func && !inserted && after_grpc==1 && $0 ~ /^[[:space:]]*;;[[:space:]]*$/) { after_grpc=2 }
-            if (in_func && !inserted && $0 ~ /grpc\)/) { after_grpc=1 }
-            if (in_func && !inserted && after_grpc==2 && $0 ~ /^[[:space:]]*\*\)/) {
-                while ((getline line < BLOCK_FILE) > 0) { print line }
+        # Use line-number approach: find *) that comes after grpc) closing ;;
+        # Step 1: find line number of *) inside _add_outbound_transport that follows grpc
+        INSERT_LINE=$(awk '
+            /^_add_outbound_transport\(\)/ { in_func=1 }
+            in_func && /^[[:space:]]*grpc\)/ { after_grpc=1 }
+            in_func && after_grpc && /^[[:space:]]*;;/ { after_grpc=2 }
+            in_func && after_grpc==2 && /^[[:space:]]*\*\)/ { print NR; exit }
+        ' "$FACADE")
+
+        if [ -z "$INSERT_LINE" ]; then
+            rm -f "$BLOCK_FILE"
+            err "xhttp: cannot find insertion point (*) after grpc) in $FACADE"
+        else
+            awk -v line="$INSERT_LINE" '
+            NR == line {
+                while ((getline l < BLOCK_FILE) > 0) { print l }
                 close(BLOCK_FILE)
-                inserted=1
             }
-            print $0
-        }
-        ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+            { print }
+            ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+        fi
     fi
 
     rm -f "$BLOCK_FILE"
