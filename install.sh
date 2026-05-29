@@ -1,20 +1,15 @@
 #!/bin/sh
-# Podkop xHTTP patch
-# - Adds xhttp transport with full parameter support (mode, x_padding_bytes, sc_* fields)
-# - Adds spider_x support for Reality (spx URL param -> tls.reality.spider_x)
-# - Fixes sing-box-extended version detection in /usr/bin/podkop
+# Podkop xHTTP patch — auto-detects Podkop version and applies the right fixes
+# Supported: Podkop 0.7.17, 0.7.18+
 # https://github.com/moix89/podkop-xhttp-patch
 
 FACADE="/usr/lib/podkop/sing_box_config_facade.sh"
 PODKOP="/usr/bin/podkop"
 BACKUP_DIR="/root"
 
-# Markers: unique strings present only after the respective patch is applied.
-# Changing a marker forces re-apply even if an older version of the patch exists.
 MARKER_XHTTP="xhttp_sc_min_posts_interval_ms"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
-MARKER_CMPFIX="major.*gt 1.*|| \\\\"
 
 ERRORS=0
 
@@ -34,6 +29,29 @@ command -v sing-box >/dev/null 2>&1 \
 [ -f "$FACADE" ] || die "Not found: $FACADE — is Podkop installed?"
 [ -f "$PODKOP" ] || die "Not found: $PODKOP — is Podkop installed?"
 
+# ── detect Podkop version ─────────────────────────────────────────────────────
+
+PODKOP_VERSION=""
+if command -v opkg >/dev/null 2>&1; then
+    PODKOP_VERSION=$(opkg list-installed 2>/dev/null | awk '/^podkop /{print $3}')
+fi
+if [ -z "$PODKOP_VERSION" ]; then
+    PODKOP_VERSION=$(grep -m1 'PODKOP_VERSION\|podkop_version\|version' "$PODKOP" 2>/dev/null \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+fi
+
+log "Detected Podkop version: ${PODKOP_VERSION:-unknown}"
+
+# Warn if version is untested
+case "$PODKOP_VERSION" in
+    0.7.17|0.7.18)
+        log "Version $PODKOP_VERSION is supported." ;;
+    "")
+        warn "Could not detect Podkop version. Proceeding anyway." ;;
+    *)
+        warn "Podkop $PODKOP_VERSION is untested. Patch may not apply correctly." ;;
+esac
+
 # ── backup ────────────────────────────────────────────────────────────────────
 
 TS="$(date +%Y%m%d_%H%M%S)"
@@ -43,17 +61,14 @@ cp "$PODKOP"  "$BACKUP_DIR/podkop.backup.$TS"
 log "Backup: $BACKUP_DIR/podkop.backup.$TS"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PATCH 1 — xhttp transport block
-# Reads path/host/mode/x_padding_bytes/sc_* from URL query params with defaults.
-# Idempotent: marker = sc_min_posts_interval_ms
-# If old xhttp) block exists without marker → replace it.
-# If no xhttp) block at all → insert before *) after grpc closes.
+# PATCH 1 — xhttp transport block in sing_box_config_facade.sh
+# Idempotent: marker = xhttp_sc_min_posts_interval_ms
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_XHTTP" "$FACADE"; then
-    log "[1/3] xhttp block — already up to date, skipping."
+    log "[1/4] xhttp block — already up to date, skipping."
 else
-    log "[1/3] Inserting/updating xhttp transport block..."
+    log "[1/4] Inserting/updating xhttp transport block..."
 
     BLOCK_FILE="/tmp/_podkop_xhttp_block.$$"
     cat > "$BLOCK_FILE" << 'XHTTP_BLOCK_EOF'
@@ -76,13 +91,11 @@ else
         fi
 
         # Apply defaults where value is missing
-        [ -z "$xhttp_mode" ]              && xhttp_mode="auto"
-        [ -z "$xhttp_x_padding_bytes" ]   && xhttp_x_padding_bytes="${xhttp_extra_xpad:-100-1000}"
-        # Values from extra may be quoted strings like "1000000" — strip quotes, use as numbers
+        [ -z "$xhttp_mode" ]            && xhttp_mode="auto"
+        [ -z "$xhttp_x_padding_bytes" ] && xhttp_x_padding_bytes="${xhttp_extra_xpad:-100-1000}"
         xhttp_sc_max_each_post_bytes="${xhttp_extra_max:-1000000}"
         xhttp_sc_min_posts_interval_ms="${xhttp_extra_min:-30}"
-        # sc_* fields must be strings (not numbers) per sing-box-extended schema
-        # Strip surrounding quotes from extra values just in case
+        # sc_* must be strings — strip surrounding quotes from extra values
         xhttp_sc_max_each_post_bytes=$(echo "$xhttp_sc_max_each_post_bytes" | tr -d '"')
         xhttp_sc_min_posts_interval_ms=$(echo "$xhttp_sc_min_posts_interval_ms" | tr -d '"')
 
@@ -104,7 +117,7 @@ else
             }'
         )
 
-        # Set ALPN: use value from URL if present, otherwise default to h2+http/1.1
+        # ALPN: use value from URL if present, otherwise default to h2+http/1.1
         local xhttp_alpn
         xhttp_alpn=$(url_get_query_param "$url" "alpn")
         if [ -n "$xhttp_alpn" ]; then
@@ -130,7 +143,6 @@ XHTTP_BLOCK_EOF
     grep -q "xhttp)" "$FACADE" && HAS_OLD_XHTTP=1
 
     if [ "$HAS_OLD_XHTTP" -eq 1 ]; then
-        # Replace old xhttp) block in-place (skip lines from xhttp) through its ;;)
         awk '
         BEGIN { skip=0; inserted=0 }
         {
@@ -145,9 +157,6 @@ XHTTP_BLOCK_EOF
         }
         ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
     else
-        # Fresh insert before *) after grpc ;; closes inside _add_outbound_transport()
-        # Use line-number approach: find *) that comes after grpc) closing ;;
-        # Step 1: find line number of *) inside _add_outbound_transport that follows grpc
         INSERT_LINE=$(awk '
             /^_add_outbound_transport\(\)/ { in_func=1 }
             in_func && /^[[:space:]]*grpc\)/ { after_grpc=1 }
@@ -157,7 +166,7 @@ XHTTP_BLOCK_EOF
 
         if [ -z "$INSERT_LINE" ]; then
             rm -f "$BLOCK_FILE"
-            err "xhttp: cannot find insertion point (*) after grpc) in $FACADE"
+            err "[1/4] Cannot find insertion point in $FACADE"
         else
             awk -v line="$INSERT_LINE" '
             NR == line {
@@ -171,73 +180,67 @@ XHTTP_BLOCK_EOF
 
     rm -f "$BLOCK_FILE"
 
-    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed: $FACADE"; }
+    if [ -f "${FACADE}.tmp" ]; then
+        sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "[1/4] Syntax check failed: $FACADE"; }
+    fi
 
-    if ! grep -q "$MARKER_XHTTP" "${FACADE}.tmp"; then
-        rm -f "${FACADE}.tmp"
-        err "xhttp block not found after patch — check grpc block indentation in $FACADE"
-    else
-        mv "${FACADE}.tmp" "$FACADE"
-        log "[1/3] xhttp transport block applied."
+    if [ -f "${FACADE}.tmp" ]; then
+        if ! grep -q "$MARKER_XHTTP" "${FACADE}.tmp"; then
+            rm -f "${FACADE}.tmp"
+            err "[1/4] xhttp block not found after patch"
+        else
+            mv "${FACADE}.tmp" "$FACADE"
+            log "[1/4] xhttp transport block applied."
+        fi
     fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PATCH 2 — remove spider_x if previously applied
-# sing-box 1.13.12 does NOT support spider_x field in tls.reality.
-# If the old patch added it, remove it now.
+# sing-box 1.13.12+ does NOT support spider_x in tls.reality
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_SPIDER" "$FACADE"; then
-    log "[2/3] Removing spider_x block (not supported by sing-box 1.13.12+)..."
+    log "[2/4] Removing spider_x block (not supported by sing-box 1.13.12+)..."
 
-    # Remove lines from "local spx spider_x" through the closing ) of the jq call
     awk '
     BEGIN { skip=0 }
     /[[:space:]]*local spx spider_x/ { skip=1 }
-    {
-        if (!skip) { print $0 }
-    }
+    { if (!skip) { print $0 } }
     /^[[:space:]]*\)[[:space:]]*$/ && skip { skip=0; next }
     ' "$FACADE" > "${FACADE}.tmp"
 
-    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "Syntax check failed removing spider_x: $FACADE"; }
+    sh -n "${FACADE}.tmp" || { rm -f "${FACADE}.tmp"; err "[2/4] Syntax check failed removing spider_x"; }
 
     if grep -q "$MARKER_SPIDER" "${FACADE}.tmp"; then
         rm -f "${FACADE}.tmp"
-        err "spider_x block removal failed"
+        err "[2/4] spider_x removal failed"
     else
         mv "${FACADE}.tmp" "$FACADE"
-        log "[2/3] spider_x block removed."
+        log "[2/4] spider_x block removed."
     fi
 else
-    log "[2/3] spider_x — not present, skipping."
+    log "[2/4] spider_x — not present, skipping."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PATCH 3 — sing-box version detection in /usr/bin/podkop
-# 3a/3b: strip -extended-* suffix (marker: cut -d'-' -f1)
-# 3c:    fix version comparison operator precedence in ash (marker: major.*gt 1.*|| \\)
+# PATCH 3 — strip -extended-* suffix from version string in /usr/bin/podkop
+# Idempotent: marker = cut -d'-' -f1
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_VERSION" "$PODKOP"; then
-    log "[3/3] Version string fix — already installed, skipping."
+    log "[3/4] Version string fix — already installed, skipping."
 else
-    log "[3/3] Fixing sing-box version string parsing..."
+    log "[3/4] Fixing sing-box version string parsing..."
 
     cp "$PODKOP" "${PODKOP}.tmp"
 
     SQ="'"
-
-    # 3a. check_requirements(): add | cut -d'-' -f1 after awk '{print $3}'
     NEEDLE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ})\""
     REPLACE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)\""
-
-    # 3b. check_sing_box(): same for the 2>/dev/null form
     NEEDLE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ})"
     REPLACE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)"
 
-    # Use index()+substr() — gsub() would treat needles as regex (breaks on $, (, [)
     awk -v na="$NEEDLE_A" -v ra="$REPLACE_A" \
         -v nb="$NEEDLE_B" -v rb="$REPLACE_B" '
     {
@@ -251,51 +254,70 @@ else
     ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
     mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
 
-
-    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed: $PODKOP"; }
+    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "[3/4] Syntax check failed: $PODKOP"; }
 
     if ! grep -q "$MARKER_VERSION" "${PODKOP}.tmp"; then
         rm -f "${PODKOP}.tmp"
-        err "Version fix not applied — pattern not found in $PODKOP. Podkop may have been updated."
+        err "[3/4] Version string fix not applied — pattern not found in $PODKOP"
     else
         mv "${PODKOP}.tmp" "$PODKOP"
         chmod +x "$PODKOP"
-        log "[3/3] Version string fix applied."
+        log "[3/4] Version string fix applied."
     fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PATCH 4 — fix version comparison operator precedence in ash
-# In ash, && binds tighter than ||, so the multi-line condition without braces
-# evaluates incorrectly (1.13.x fails the check despite being > 1.12.4).
-# Idempotent: marker = major.*gt 1.*|| \\
+#
+# In ash, && binds tighter than ||. Multi-line conditions without braces
+# evaluate incorrectly — 1.13.x fails the >= 1.12.4 check.
+#
+# Podkop 0.7.18 uses 3 lines without parens:
+#   if [ "$major" -gt 1 ] ||
+#       [ "$major" -eq 1 ] && [ "$minor" -gt 12 ] ||
+#       [ "$major" -eq 1 ] && [ "$minor" -eq 12 ] && [ "$patch" -ge 4 ]; then
+#
+# Podkop 0.7.17 uses 2 lines with parens:
+#   if [ "$major" -gt 1 ] || ([ "$major" -eq 1 ] && [ "$minor" -gt 12 ]) || \
+#      ([ "$major" -eq 1 ] && [ "$minor" -eq 12 ] && [ "$patch" -ge 4 ]); then
+#
+# Both are replaced with POSIX-safe { ...; } form.
+# Idempotent: marker = presence of "|| \\" after major -gt 1
 # ─────────────────────────────────────────────────────────────────────────────
 
-if grep -qE 'major.*-gt 1.*\|\| \\' "$PODKOP"; then
+if grep -qE '\-gt 1[[:space:]]*\|\|[[:space:]]*\\' "$PODKOP"; then
     log "[4/4] Version comparison fix — already installed, skipping."
 else
-    log "[4/4] Fixing version comparison operator precedence..."
+    log "[4/4] Fixing version comparison operator precedence (ash bug)..."
 
     cp "$PODKOP" "${PODKOP}.tmp"
 
     awk '
+    # Podkop 0.7.18: first line ends with bare ||
     /if \[ "\$major" -gt 1 \] \|\|$/ {
-        getline
-        getline
+        getline; getline
         print "            if [ \"$major\" -gt 1 ] || \\"
         print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -gt 12 ]; } || \\"
         print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -eq 12 ] && [ \"$patch\" -ge 4 ]; }; then"
+        next
+    }
+    # Podkop 0.7.17: first line ends with || (
+    /if \[ "\$major" -gt 1 \] \|\| \(/ {
+        getline
+        print "    if [ \"$major\" -gt 1 ] || \\"
+        print "       { [ \"$major\" -eq 1 ] && [ \"$minor\" -gt 12 ]; } || \\"
+        print "       { [ \"$major\" -eq 1 ] && [ \"$minor\" -eq 12 ] && [ \"$patch\" -ge 4 ]; }; then"
         next
     }
     { print $0 }
     ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
     mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
 
-    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed (cmp fix): $PODKOP"; }
+    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "[4/4] Syntax check failed: $PODKOP"; }
 
-    if ! grep -qE 'major.*-gt 1.*\|\| \\' "${PODKOP}.tmp"; then
+    if ! grep -qE '\-gt 1[[:space:]]*\|\|[[:space:]]*\\' "${PODKOP}.tmp"; then
         rm -f "${PODKOP}.tmp"
-        err "Version comparison fix not applied — pattern not found in $PODKOP"
+        err "[4/4] Version comparison fix not applied — pattern not found in $PODKOP"
     else
         mv "${PODKOP}.tmp" "$PODKOP"
         chmod +x "$PODKOP"

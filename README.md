@@ -328,7 +328,7 @@ logread | grep podkop | tail -30
 
 - OpenWrt 25.12.2
 - Роутер: Xiaomi Redmi AX6S
-- Podkop 0.7.18
+- Podkop 0.7.17 / 0.7.18
 - sing-box-extended 1.13.12-extended-2.1.3
 - Протокол: VLESS Reality XHTTP
 - Режим: URLTest failover / одиночный URL
@@ -428,7 +428,7 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 
 ### Common issues
 
-#### `Unknown transport 'xhttp' detected`
+#### xhttp transport not found
 
 Patch not applied or reset after Podkop update. Re-run the install command.
 
@@ -507,7 +507,7 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 - OpenWrt 25.12.2
 - Router: Xiaomi Redmi AX6S
-- Podkop 0.7.18
+- Podkop 0.7.17 / 0.7.18
 - sing-box-extended 1.13.12-extended-2.1.3
 - Protocol: VLESS Reality XHTTP
 - Mode: URLTest failover / single URL
