@@ -6,7 +6,7 @@ FACADE="/usr/lib/podkop/sing_box_config_facade.sh"
 PODKOP="/usr/bin/podkop"
 BACKUP_DIR="/root"
 
-MARKER_XHTTP="xhttp)"
+MARKER_XHTTP="sc_min_posts_interval_ms"
 MARKER_VERSION="cut -d'-' -f1"
 
 ERRORS=0
@@ -40,26 +40,27 @@ log "Backup: $BACKUP_DIR/podkop.backup.$TS"
 # ── patch 1: xhttp transport block in sing_box_config_facade.sh ───────────────
 
 if grep -q "$MARKER_XHTTP" "$FACADE"; then
-    log "[1/2] xhttp transport block — already installed, skipping."
+    log "[1/2] xhttp transport block — already up to date, skipping."
 else
-    log "[1/2] Inserting xhttp transport block..."
+    log "[1/2] Inserting/updating xhttp transport block..."
 
-    # The block uses single quotes inside jq filters, so we use a temp file
-    # to avoid any shell quoting problems with awk -v.
+    # Write the new block to a temp file (single quotes in jq filters are safe inside heredoc).
     BLOCK_FILE="/tmp/_podkop_xhttp_block.$$"
     cat > "$BLOCK_FILE" << 'XHTTP_BLOCK_EOF'
     xhttp)
-        local xhttp_path xhttp_host xhttp_sc_max_each_post_bytes
+        local xhttp_path xhttp_host xhttp_sc_max_each_post_bytes xhttp_sc_min_posts_interval_ms
 
         xhttp_path=$(url_get_query_param "$url" "path")
         xhttp_host=$(url_get_query_param "$url" "host")
         xhttp_sc_max_each_post_bytes="1000000"
+        xhttp_sc_min_posts_interval_ms="30"
 
         config=$(echo "$config" | jq \
             --arg outbound_tag "$outbound_tag" \
             --arg path "$xhttp_path" \
             --arg host "$xhttp_host" \
-            --arg sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" '
+            --arg sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" \
+            --arg sc_min_posts_interval_ms "$xhttp_sc_min_posts_interval_ms" '
             (.outbounds[] | select(.tag == $outbound_tag)) += {
                 transport: (
                     {
@@ -71,6 +72,9 @@ else
                     }
                     + if $sc_max_each_post_bytes != "" then {
                         sc_max_each_post_bytes: $sc_max_each_post_bytes
+                    } else {} end
+                    + if $sc_min_posts_interval_ms != "" then {
+                        sc_min_posts_interval_ms: $sc_min_posts_interval_ms
                     } else {} end
                 )
             }'
@@ -84,26 +88,56 @@ else
         ;;
 XHTTP_BLOCK_EOF
 
-    # awk: find _add_outbound_transport(), wait for grpc ;; to close,
-    # then insert the block file contents before the *) wildcard.
-    awk '
-    BEGIN { in_func=0; after_grpc=0; inserted=0 }
-    {
-        if ($0 ~ /_add_outbound_transport\(\)/) { in_func=1 }
+    # awk strategy:
+    # - If an old xhttp) block exists (without sc_min_posts_interval_ms):
+    #     skip lines from xhttp) through its closing ;; and insert new block instead.
+    # - If no xhttp) block exists:
+    #     insert new block before *) after grpc ;; closes.
+    HAS_OLD_XHTTP=0
+    grep -q "xhttp)" "$FACADE" && HAS_OLD_XHTTP=1
 
-        if (in_func && !inserted && after_grpc==1 && $0 ~ /^[[:space:]]*;;[[:space:]]*$/) {
-            after_grpc=2
+    if [ "$HAS_OLD_XHTTP" -eq 1 ]; then
+        # Replace old xhttp block: skip from "xhttp)" up to and including its "    ;;"
+        awk '
+        BEGIN { skip=0; inserted=0 }
+        {
+            # Start skipping at the old xhttp) line
+            if (!inserted && $0 ~ /^[[:space:]]*xhttp\)/) {
+                skip=1
+            }
+            # End skipping at the ;; that closes xhttp), then emit new block
+            if (skip && $0 ~ /^[[:space:]]*;;[[:space:]]*$/) {
+                skip=0
+                inserted=1
+                while ((getline line < BLOCK_FILE) > 0) { print line }
+                close(BLOCK_FILE)
+                next
+            }
+            if (!skip) { print $0 }
         }
-        if (in_func && !inserted && $0 ~ /grpc\)/) { after_grpc=1 }
+        ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+    else
+        # Fresh insert: find _add_outbound_transport(), wait for grpc ;; to close,
+        # insert before the *) wildcard.
+        awk '
+        BEGIN { in_func=0; after_grpc=0; inserted=0 }
+        {
+            if ($0 ~ /_add_outbound_transport\(\)/) { in_func=1 }
 
-        if (in_func && !inserted && after_grpc==2 && $0 ~ /^[[:space:]]*\*\)/) {
-            while ((getline line < BLOCK_FILE) > 0) { print line }
-            close(BLOCK_FILE)
-            inserted=1
+            if (in_func && !inserted && after_grpc==1 && $0 ~ /^[[:space:]]*;;[[:space:]]*$/) {
+                after_grpc=2
+            }
+            if (in_func && !inserted && $0 ~ /grpc\)/) { after_grpc=1 }
+
+            if (in_func && !inserted && after_grpc==2 && $0 ~ /^[[:space:]]*\*\)/) {
+                while ((getline line < BLOCK_FILE) > 0) { print line }
+                close(BLOCK_FILE)
+                inserted=1
+            }
+            print $0
         }
-        print $0
-    }
-    ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+        ' BLOCK_FILE="$BLOCK_FILE" "$FACADE" > "${FACADE}.tmp"
+    fi
 
     rm -f "$BLOCK_FILE"
 
@@ -114,10 +148,10 @@ XHTTP_BLOCK_EOF
 
     if ! grep -q "$MARKER_XHTTP" "${FACADE}.tmp"; then
         rm -f "${FACADE}.tmp"
-        err "Block insertion failed — marker not found. Check grpc block indentation in $FACADE"
+        err "Block insertion failed — marker not found in ${FACADE}.tmp"
     else
         mv "${FACADE}.tmp" "$FACADE"
-        log "[1/2] xhttp transport block inserted."
+        log "[1/2] xhttp transport block updated (sc_min_posts_interval_ms added)."
     fi
 fi
 
