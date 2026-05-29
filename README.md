@@ -6,63 +6,76 @@
 
 ## podkop-xhttp-patch
 
-One-command patch that adds **xHTTP transport** support to [Podkop](https://github.com/itdoginfo/podkop) so `URLTest` works with `vless://...type=xhttp...` links on OpenWrt.
+One-command patch that fixes two issues in [Podkop](https://github.com/itdoginfo/podkop) when using `vless://...type=xhttp...` links with **URLTest** on OpenWrt + sing-box-extended.
 
-### Problem
+### What it fixes
 
-Podkop crashes with:
+| # | File | Fix |
+|---|------|-----|
+| 1 | `/usr/lib/podkop/sing_box_config_facade.sh` | Adds `xhttp)` transport branch — without it Podkop crashes with `Unknown transport 'xhttp' detected` |
+| 2 | `/usr/bin/podkop` | Strips `-extended-2.x.x` suffix before version comparison so `1.13.11-extended-2.1.0` is parsed as `1.13.11` |
+| 3 | `/usr/bin/podkop` | Replaces subshell `(...)` comparison with POSIX-safe `{ ...; }` so the version check works in `/bin/sh` |
+
+After patch 2+3 `podkop global_check` shows:
 
 ```text
-Unknown transport 'xhttp' detected.
+✅ Sing-box version is compatible (newer than 1.12.4)
 ```
 
-**Root cause:** `_add_outbound_transport()` in `/usr/lib/podkop/sing_box_config_facade.sh` has no `xhttp)` branch in its `case` statement.
+instead of the false red error.
 
 ---
 
 ### Prerequisites
 
-Before applying this patch make sure **sing-box-extended** is installed — it is required for xHTTP transport support.
-
-Install sing-box-extended with one command:
+Install **sing-box-extended** first — it provides the xHTTP transport engine that the stock `sing-box` package does not include:
 
 ```sh
 sh <(wget -O - https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh)
 ```
 
-> sing-box-extended adds xHTTP, XUDP and other modern transports that the stock sing-box package does not include.
-> Tested with: **sing-box-extended 1.13.11-extended-2.1.0**
+> Tested with: sing-box-extended **1.13.11-extended-2.1.0**
 
 ---
 
 ### Installation
 
+**Option 1 — one-liner** (requires process substitution, works on most shells):
+
 ```sh
 sh <(wget -O - https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh)
 ```
 
-#### What the installer does
+**Option 2 — explicit download** (always works on OpenWrt `ash`):
 
-| Step | Action |
-|------|--------|
-| 1 | Verifies `/usr/lib/podkop/sing_box_config_facade.sh` exists |
-| 2 | Verifies `jq` is available |
-| 3 | Creates a timestamped backup: `/root/sing_box_config_facade.sh.backup.YYYYMMDD_HHMMSS` |
-| 4 | Checks if the patch is already installed — safe to re-run |
-| 5 | Inserts the `xhttp)` block before `*)` inside `_add_outbound_transport()` |
-| 6 | Runs `sh -n` syntax check on the patched file |
-| 7 | Restarts Podkop |
-
-The script is **idempotent** — running it twice prints `Patch already installed.`
+```sh
+wget -O /tmp/podkop-xhttp-install.sh \
+  https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh
+sh /tmp/podkop-xhttp-install.sh
+```
 
 ---
 
-### What the patch does
+### What the installer does
 
-Inserts an `xhttp)` block into `_add_outbound_transport()` right after the `grpc)` block:
+| Step | Action |
+|------|--------|
+| 1 | Checks for `jq`, `sed`, `awk`, `sing-box`, both Podkop files |
+| 2 | Creates timestamped backups in `/root/` |
+| 3 | Inserts `xhttp)` block before `*)` in `_add_outbound_transport()` |
+| 4 | Patches version string parsing in `check_requirements()` and `check_sing_box()` |
+| 5 | Patches version comparison to use POSIX-safe `{ ...; }` form |
+| 6 | Runs `sh -n` syntax check on both patched files |
+| 7 | Restarts Podkop |
+| 8 | Prints verification commands |
 
-1. Reads `path` and `host` from the VLESS URL query string
-1. Generates the `transport` object in the sing-box config:
+The script is **idempotent** — re-running it is safe and prints `already installed, skipping` for each applied patch.
+
+---
+
+### Generated sing-box config
+
+For a `vless://...type=xhttp...` link Podkop will now produce:
 
 ```json
 "transport": {
@@ -75,46 +88,22 @@ Inserts an `xhttp)` block into `_add_outbound_transport()` right after the `grpc
 }
 ```
 
-1. Automatically sets TLS ALPN to `["h2", "http/1.1"]`
-
-This enables Podkop to use multiple `vless://...type=xhttp...` links in **URLTest** mode with automatic server failover.
+and automatically sets TLS ALPN to `["h2", "http/1.1"]`.
 
 ---
 
 ### Verification
 
 ```sh
-# Syntax check
-sh -n /usr/lib/podkop/sing_box_config_facade.sh
+# Check sing-box version detection
+sing-box version
+podkop global_check
 
-# Restart Podkop manually if needed
-/etc/init.d/podkop restart
+# Check xHTTP outbound was generated
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 
 # Check URLTest outbound
 jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
-
-# Check xHTTP outbound
-jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
-```
-
-Expected output:
-
-```json
-{
-  "type": "vless",
-  "tag": "...",
-  "transport": {
-    "type": "xhttp",
-    "path": "/api/v1/files",
-    "mode": "auto",
-    "host": "example.com",
-    "x_padding_bytes": "100-1000",
-    "sc_max_each_post_bytes": "1000000"
-  },
-  "tls": {
-    "alpn": ["h2", "http/1.1"]
-  }
-}
 ```
 
 ---
@@ -124,7 +113,9 @@ Expected output:
 | Component | Version |
 |-----------|---------|
 | OpenWrt | 25.12.2 |
+| Router | Xiaomi Redmi AX6S |
 | Podkop | 0.7.17 |
+| LuCI App Podkop | 0.7.17 |
 | sing-box-extended | 1.13.11-extended-2.1.0 |
 | Protocol | VLESS Reality XHTTP |
 | Mode | URLTest failover |
@@ -133,32 +124,24 @@ Expected output:
 
 ### After Podkop updates
 
-If Podkop is updated via `opkg`, the original file is overwritten and the patch is lost. Simply re-run the install command to re-apply it.
+If Podkop is updated via `opkg`, both files are overwritten and the patches are lost. Re-run the install command to re-apply them.
 
 ---
 
-### Uninstall / rollback
+### Rollback
 
 ```sh
 # List backups
-ls /root/sing_box_config_facade.sh.backup.*
+ls /root/*.backup.*
 
-# Restore (replace timestamp with actual filename)
+# Restore facade (replace timestamp)
 cp /root/sing_box_config_facade.sh.backup.20250101_120000 \
    /usr/lib/podkop/sing_box_config_facade.sh
+
+# Restore podkop binary
+cp /root/podkop.backup.20250101_120000 /usr/bin/podkop
+
 /etc/init.d/podkop restart
-```
-
----
-
-### How it works
-
-The `awk`-based installer locates the `*)` wildcard that immediately follows the `grpc ;;` closing line and inserts the new block before it:
-
-```text
-grpc)   ...  ;;
-xhttp)  ...  ;;   <- inserted here
-*)      log "Unknown transport..."
 ```
 
 ---
@@ -175,63 +158,78 @@ MIT — see [LICENSE](LICENSE).
 
 ## podkop-xhttp-patch
 
-Патч одной командой, который добавляет поддержку **xHTTP transport** в [Podkop](https://github.com/itdoginfo/podkop), чтобы `URLTest` работал со ссылками `vless://...type=xhttp...` на OpenWrt.
+Патч одной командой, который устраняет два бага в [Podkop](https://github.com/itdoginfo/podkop) при использовании ссылок `vless://...type=xhttp...` с **URLTest** на OpenWrt + sing-box-extended.
 
-### Проблема
+### Что исправляет
 
-Podkop падает с ошибкой:
+| # | Файл | Исправление |
+|---|------|-------------|
+| 1 | `/usr/lib/podkop/sing_box_config_facade.sh` | Добавляет ветку `xhttp)` — без неё Podkop падает с `Unknown transport 'xhttp' detected` |
+| 2 | `/usr/bin/podkop` | Обрезает суффикс `-extended-2.x.x` перед сравнением версий, чтобы `1.13.11-extended-2.1.0` читалось как `1.13.11` |
+| 3 | `/usr/bin/podkop` | Заменяет подоболочку `(...)` в сравнении версии на POSIX-совместимую форму `{ ...; }` |
+
+После патчей 2+3 команда `podkop global_check` показывает:
 
 ```text
-Unknown transport 'xhttp' detected.
+✅ Sing-box version is compatible (newer than 1.12.4)
 ```
 
-**Причина:** в функции `_add_outbound_transport()` файла `/usr/lib/podkop/sing_box_config_facade.sh` отсутствует ветка `xhttp)` в `case`-блоке.
+вместо ложной красной ошибки.
+
+> **Примечание:** текст `(newer than 1.12.4)` — это название условия совместимости, а не номер установленной версии. Фактическая версия отображается в выводе `podkop global_check`.
 
 ---
 
 ### Требования
 
-Перед установкой патча убедитесь, что установлен **sing-box-extended** — он необходим для поддержки xHTTP transport.
-
-Установить sing-box-extended одной командой:
+Сначала установите **sing-box-extended** — он обеспечивает движок xHTTP transport, которого нет в стандартном пакете `sing-box`:
 
 ```sh
 sh <(wget -O - https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh)
 ```
 
-> sing-box-extended добавляет xHTTP, XUDP и другие современные транспорты, которых нет в стандартном пакете sing-box.
-> Проверено с: **sing-box-extended 1.13.11-extended-2.1.0**
+> Проверено с: sing-box-extended **1.13.11-extended-2.1.0**
 
 ---
 
 ### Установка
 
+**Вариант 1 — однострочник** (требует подстановки процессов, работает в большинстве оболочек):
+
 ```sh
 sh <(wget -O - https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh)
 ```
 
-#### Что делает установщик
+**Вариант 2 — явное скачивание** (всегда работает на `ash` в OpenWrt):
 
-| Шаг | Действие |
-|-----|----------|
-| 1 | Проверяет наличие `/usr/lib/podkop/sing_box_config_facade.sh` |
-| 2 | Проверяет наличие `jq` |
-| 3 | Создаёт backup с временной меткой: `/root/sing_box_config_facade.sh.backup.YYYYMMDD_HHMMSS` |
-| 4 | Проверяет, установлен ли патч уже — безопасно запускать повторно |
-| 5 | Вставляет блок `xhttp)` перед `*)` внутри `_add_outbound_transport()` |
-| 6 | Проверяет синтаксис через `sh -n` |
-| 7 | Перезапускает Podkop |
-
-Скрипт **идемпотентен** — повторный запуск выведет `Patch already installed.`
+```sh
+wget -O /tmp/podkop-xhttp-install.sh \
+  https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh
+sh /tmp/podkop-xhttp-install.sh
+```
 
 ---
 
-### Что делает патч
+### Что делает установщик
 
-Добавляет ветку `xhttp)` в `_add_outbound_transport()` сразу после блока `grpc)`:
+| Шаг | Действие |
+|-----|----------|
+| 1 | Проверяет наличие `jq`, `sed`, `awk`, `sing-box` и обоих файлов Podkop |
+| 2 | Создаёт backup с timestamp в `/root/` |
+| 3 | Вставляет блок `xhttp)` перед `*)` в `_add_outbound_transport()` |
+| 4 | Патчит парсинг версии в `check_requirements()` и `check_sing_box()` |
+| 5 | Патчит сравнение версии: заменяет `(...)` на POSIX-совместимый `{ ...; }` |
+| 6 | Проверяет синтаксис обоих файлов через `sh -n` |
+| 7 | Перезапускает Podkop |
+| 8 | Выводит команды для проверки |
 
-1. Читает `path` и `host` из query-параметров VLESS-ссылки
-1. Генерирует объект `transport` в конфиге sing-box:
+Скрипт **идемпотентен** — повторный запуск безопасен, для каждого уже применённого патча выводит `already installed, skipping`.
+
+---
+
+### Генерируемый конфиг sing-box
+
+Для ссылки `vless://...type=xhttp...` Podkop теперь генерирует:
 
 ```json
 "transport": {
@@ -244,46 +242,22 @@ sh <(wget -O - https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/
 }
 ```
 
-1. Автоматически выставляет TLS ALPN в `["h2", "http/1.1"]`
-
-После патча Podkop может использовать несколько `vless://...type=xhttp...` ссылок в режиме **URLTest** с автоматическим переключением между серверами.
+и автоматически выставляет TLS ALPN в `["h2", "http/1.1"]`.
 
 ---
 
 ### Проверка
 
 ```sh
-# Синтаксис-проверка
-sh -n /usr/lib/podkop/sing_box_config_facade.sh
+# Проверить определение версии sing-box
+sing-box version
+podkop global_check
 
-# Ручной перезапуск Podkop
-/etc/init.d/podkop restart
+# Проверить xHTTP outbound в конфиге
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 
 # Проверить URLTest outbound
 jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
-
-# Проверить xHTTP outbound
-jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
-```
-
-Ожидаемый вывод:
-
-```json
-{
-  "type": "vless",
-  "tag": "...",
-  "transport": {
-    "type": "xhttp",
-    "path": "/api/v1/files",
-    "mode": "auto",
-    "host": "example.com",
-    "x_padding_bytes": "100-1000",
-    "sc_max_each_post_bytes": "1000000"
-  },
-  "tls": {
-    "alpn": ["h2", "http/1.1"]
-  }
-}
 ```
 
 ---
@@ -293,7 +267,9 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 | Компонент | Версия |
 |-----------|--------|
 | OpenWrt | 25.12.2 |
+| Роутер | Xiaomi Redmi AX6S |
 | Podkop | 0.7.17 |
+| LuCI App Podkop | 0.7.17 |
 | sing-box-extended | 1.13.11-extended-2.1.0 |
 | Протокол | VLESS Reality XHTTP |
 | Режим | URLTest failover |
@@ -302,32 +278,24 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 
 ### После обновления Podkop
 
-Если Podkop обновляется через `opkg`, оригинальный файл перезаписывается и патч слетает. Просто запустите команду установки снова — патч переустановится.
+Если Podkop обновляется через `opkg`, оба файла перезаписываются и патчи слетают. Достаточно снова запустить команду установки.
 
 ---
 
-### Откат / удаление патча
+### Откат
 
 ```sh
 # Список backup-файлов
-ls /root/sing_box_config_facade.sh.backup.*
+ls /root/*.backup.*
 
-# Восстановить (подставьте реальное имя файла)
+# Восстановить sing_box_config_facade.sh (подставьте timestamp)
 cp /root/sing_box_config_facade.sh.backup.20250101_120000 \
    /usr/lib/podkop/sing_box_config_facade.sh
+
+# Восстановить podkop
+cp /root/podkop.backup.20250101_120000 /usr/bin/podkop
+
 /etc/init.d/podkop restart
-```
-
----
-
-### Как это работает
-
-Установщик на `awk` находит `*)` (wildcard), стоящий сразу после закрывающего `;;` блока `grpc)`, и вставляет новый блок перед ним:
-
-```text
-grpc)   ...  ;;
-xhttp)  ...  ;;   <- вставляется здесь
-*)      log "Unknown transport..."
 ```
 
 ---
