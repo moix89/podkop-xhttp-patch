@@ -183,6 +183,8 @@ else
     log "[2/3] Adding spider_x (Reality spx) support..."
 
     SPX_BLOCK_FILE="/tmp/_podkop_spx_block.$$"
+    # In sing_box_cf_add_proxy_outbound() the local variable is $tag, not $outbound_tag.
+    # The jq block must use $tag to match the correct outbound.
     cat > "$SPX_BLOCK_FILE" << 'SPX_BLOCK_EOF'
     local spx spider_x
     spx=$(url_get_query_param "$url" "spx")
@@ -190,29 +192,28 @@ else
     spider_x=$(printf '%s' "$spx" | sed 's/%2F/\//g; s/%2f/\//g')
     [ -z "$spider_x" ] && spider_x="/"
     config=$(echo "$config" | jq \
-        --arg outbound_tag "$outbound_tag" \
+        --arg tag "$tag" \
         --arg spider_x "$spider_x" '
-        if (.outbounds[] | select(.tag == $outbound_tag).tls.reality) then
-            (.outbounds[] | select(.tag == $outbound_tag).tls.reality.spider_x) = $spider_x
+        if (.outbounds[] | select(.tag == $tag).tls.reality) then
+            (.outbounds[] | select(.tag == $tag).tls.reality.spider_x) = $spider_x
         else . end
         '
     )
 SPX_BLOCK_EOF
 
-    # Insert the spider_x block after the line that calls _add_outbound_security
-    # inside the vless) case. We match the exact call pattern and append after it.
+    # Insert after the _add_outbound_security call inside the vless) branch.
+    # In the original file the call looks like:
+    #   config=$(_add_outbound_security "$config" "$tag" "$url")
+    # We match on _add_outbound_security and "$tag" (not $outbound_tag).
     awk '
     BEGIN { inserted=0; in_vless=0 }
     {
-        # Track entry into vless) branch
         if ($0 ~ /^[[:space:]]*vless\)/) { in_vless=1 }
-        # Reset when we leave vless) (next case label or end of case)
         if (in_vless && $0 ~ /^[[:space:]]*(ss|trojan|socks|hysteria|http|\*)\)/) { in_vless=0 }
 
         print $0
 
-        # After _add_outbound_security call inside vless), insert spider_x block once
-        if (in_vless && !inserted && $0 ~ /_add_outbound_security.*\$outbound_tag.*\$url/) {
+        if (in_vless && !inserted && $0 ~ /_add_outbound_security/ && $0 ~ /\$tag/) {
             while ((getline line < SPX_BLOCK_FILE) > 0) { print line }
             close(SPX_BLOCK_FILE)
             inserted=1
