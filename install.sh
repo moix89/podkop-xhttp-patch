@@ -271,7 +271,7 @@ fi
 # Idempotent: marker = major.*gt 1.*|| \\
 # ─────────────────────────────────────────────────────────────────────────────
 
-if grep -qE 'major.*-gt 1.*\|\| \\' "$PODKOP"; then
+if grep -q '{ \[ "\$major" -eq 1 \]' "$PODKOP"; then
     log "[4/4] Version comparison fix — already installed, skipping."
 else
     log "[4/4] Fixing version comparison operator precedence..."
@@ -293,7 +293,7 @@ else
 
     sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed (cmp fix): $PODKOP"; }
 
-    if ! grep -qE 'major.*-gt 1.*\|\| \\' "${PODKOP}.tmp"; then
+    if ! grep -q '{ \[ "\$major" -eq 1 \]' "${PODKOP}.tmp"; then
         rm -f "${PODKOP}.tmp"
         err "Version comparison fix not applied — pattern not found in $PODKOP"
     else
