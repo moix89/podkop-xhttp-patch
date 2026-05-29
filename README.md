@@ -155,7 +155,7 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
     "type": "xhttp",
     "path": "/v1/excuse/api",
     "mode": "auto",
-    "host": "ruvds.gazrul.ru",
+    "host": "example.com",
     "x_padding_bytes": "100-1000",
     "sc_max_each_post_bytes": "1000000",
     "sc_min_posts_interval_ms": "30"
