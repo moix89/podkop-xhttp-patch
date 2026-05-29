@@ -1,159 +1,6 @@
 # podkop-xhttp-patch
 
-[English](#english) | [Русский](#русский)
-
----
-
-## English
-
-One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](https://github.com/itdoginfo/podkop) on OpenWrt + sing-box-extended.
-
----
-
-### Quick start
-
-> Run all commands over SSH on your OpenWrt router.
-
-#### Step 1 — Connect to the router
-
-```sh
-ssh root@192.168.1.1
-```
-
-> Replace `192.168.1.1` with your router's actual IP.
-> Xiaomi AX6S default gateway is `192.168.31.1`.
-
-#### Step 2 — Install sing-box-extended
-
-Replaces the stock sing-box with an extended build that includes xHTTP transport:
-
-```sh
-wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
-```
-
-#### Step 3 — Install this patch
-
-```sh
-wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
-```
-
-#### Step 4 — Verify
-
-```sh
-podkop global_check
-sing-box check -c /etc/sing-box/config.json
-jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
-jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
-```
-
----
-
-### What it fixes
-
-**Fix 1 — xhttp transport** (`sing_box_config_facade.sh`)
-
-Adds the `xhttp)` branch to `_add_outbound_transport()`. Without it Podkop crashes with `Unknown transport 'xhttp' detected`. Parameters are read from the VLESS URL with fallback defaults:
-
-- `path` — from `path=`
-- `host` — from `host=`
-- `mode` — from `mode=`, default: `auto`
-- `x_padding_bytes` — from `xPaddingBytes=` or `extra.xPaddingBytes`, default: `100-1000`
-- `sc_max_each_post_bytes` — from `extra.scMaxEachPostBytes`, default: `1000000`
-- `sc_min_posts_interval_ms` — from `extra.scMinPostsIntervalMs`, default: `30`
-- `alpn` — from `alpn=`, default: `h2,http/1.1`
-
-**Fix 2 — spider_x for Reality** (`sing_box_config_facade.sh`)
-
-Parses `spx` from the VLESS URL and writes it to `tls.reality.spider_x`. Without this fix `spider_x` is always missing from the generated config.
-
-- `spx=%2F` → `"spider_x": "/"`
-- `spx=%2Fabc123` → `"spider_x": "/abc123"`
-- `spx` absent → `"spider_x": "/"`
-
-The patch uses the value from the link as-is — it does **not** force `/` if your server uses a different path.
-
-**Fix 3 — sing-box-extended version detection** (`/usr/bin/podkop`)
-
-Strips the `-extended-2.x.x` suffix so `1.13.11-extended-2.1.0` is parsed as `1.13.11`. Also replaces the subshell `(...)` comparison with POSIX-safe `{ ...; }`. After this fix `podkop global_check` shows green instead of a false version error.
-
----
-
-### Generated sing-box config
-
-```json
-{
-  "type": "vless",
-  "tag": "...",
-  "tls": {
-    "alpn": ["h2", "http/1.1"],
-    "reality": {
-      "enabled": true,
-      "public_key": "...",
-      "short_id": "...",
-      "spider_x": "/"
-    }
-  },
-  "transport": {
-    "type": "xhttp",
-    "path": "/v1/api",
-    "mode": "auto",
-    "host": "example.com",
-    "x_padding_bytes": "100-1000",
-    "sc_max_each_post_bytes": "1000000",
-    "sc_min_posts_interval_ms": "30"
-  }
-}
-```
-
----
-
-### How the installer works
-
-1. Checks for `jq`, `sed`, `awk`, `sing-box`, and both Podkop files
-1. Creates timestamped backups in `/root/`
-1. Inserts or upgrades the `xhttp)` block (idempotent — marker: `sc_min_posts_interval_ms`)
-1. Adds `spider_x` parsing after `_add_outbound_security` in the `vless)` branch (marker: `spider_x`)
-1. Patches version string parsing in `check_requirements` and `check_sing_box` (marker: `cut -d'-' -f1`)
-1. Patches version comparison to use POSIX-safe `{ ...; }` form
-1. Runs `sh -n` syntax check on both patched files
-1. Restarts Podkop
-1. Prints verification commands
-
-The script is **idempotent** — re-running is safe. Each patch checks its own marker before applying.
-
----
-
-### Compatibility
-
-- OpenWrt 25.12.2
-- Router: Xiaomi Redmi AX6S
-- Podkop 0.7.17
-- sing-box-extended 1.13.11-extended-2.1.0
-- Protocol: VLESS Reality XHTTP
-- Mode: URLTest failover
-
----
-
-### After Podkop updates
-
-If Podkop is updated via `opkg`, both files are overwritten and patches are lost. Re-run the install command to re-apply.
-
----
-
-### Rollback
-
-```sh
-ls /root/*.backup.*
-cp /root/sing_box_config_facade.sh.backup.TIMESTAMP /usr/lib/podkop/sing_box_config_facade.sh
-cp /root/podkop.backup.TIMESTAMP /usr/bin/podkop
-/etc/init.d/podkop restart
-```
-
----
-
-### License
-
-MIT — see [LICENSE](LICENSE).
+[Русский](#русский) | [English](#english)
 
 ---
 
@@ -163,11 +10,37 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
+> [!CAUTION]
+> **ВНИМАНИЕ: ПРОВЕРЬТЕ ВЕРСИИ ПЕРЕД УСТАНОВКОЙ**
+>
+> Патч разработан и протестирован **строго** для этих версий:
+>
+> - OpenWrt **25.12.2**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.17**
+> - sing-box-extended **1.13.11-extended-2.1.0**
+>
+> Перед установкой проверьте свои версии:
+>
+> ```sh
+> cat /etc/openwrt_release | grep VERSION
+> opkg list-installed | grep podkop
+> sing-box version
+> ```
+>
+> Если ваши версии **отличаются** — патч может не примениться, примениться неправильно и сломать Podkop, или потребовать ручной доработки.
+>
+> При обновлении Podkop через `opkg` патч **слетает** — нужно запустить установку повторно.
+
+---
+
 ### Быстрый старт
 
 > Все команды выполняются на роутере через SSH.
 
 #### Шаг 1 — Подключиться к роутеру
+
+С компьютера в терминале:
 
 ```sh
 ssh root@192.168.1.1
@@ -177,6 +50,8 @@ ssh root@192.168.1.1
 > Xiaomi AX6S: стандартный адрес `192.168.31.1`.
 
 #### Шаг 2 — Установить sing-box-extended
+
+Заменяет стандартный sing-box на расширенную версию с поддержкой xHTTP:
 
 ```sh
 wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
@@ -221,13 +96,13 @@ jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 - `spx=%2Fabc123` → `"spider_x": "/abc123"`
 - `spx` отсутствует → `"spider_x": "/"`
 
-Патч берёт значение из ссылки как есть — **не принудительно заменяет** на `/`. Если у вашего сервера другой spider_x, он будет использован.
+Патч берёт значение из ссылки как есть — **не принудительно заменяет** на `/`.
 
 **Исправление 3 — версия sing-box-extended** (`/usr/bin/podkop`)
 
-Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.11-extended-2.1.0` читалось как `1.13.11`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус.
+Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.11-extended-2.1.0` читалось как `1.13.11`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус вместо ложной ошибки.
 
-> Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии.
+> Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии. Фактическая версия видна в выводе `podkop global_check`.
 
 ---
 
@@ -276,23 +151,6 @@ jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 
 ---
 
-### Совместимость
-
-- OpenWrt 25.12.2
-- Роутер: Xiaomi Redmi AX6S
-- Podkop 0.7.17
-- sing-box-extended 1.13.11-extended-2.1.0
-- Протокол: VLESS Reality XHTTP
-- Режим: URLTest failover
-
----
-
-### После обновления Podkop
-
-Если Podkop обновляется через `opkg`, оба файла перезаписываются. Достаточно снова запустить команду установки.
-
----
-
 ### Откат
 
 ```sh
@@ -307,3 +165,151 @@ cp /root/podkop.backup.TIMESTAMP /usr/bin/podkop
 ### Лицензия
 
 MIT — см. [LICENSE](LICENSE).
+
+---
+
+## English
+
+One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](https://github.com/itdoginfo/podkop) on OpenWrt + sing-box-extended.
+
+---
+
+> [!CAUTION]
+> **WARNING: CHECK YOUR VERSIONS BEFORE INSTALLING**
+>
+> This patch was developed and tested **only** for these specific versions:
+>
+> - OpenWrt **25.12.2**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.17**
+> - sing-box-extended **1.13.11-extended-2.1.0**
+>
+> Check your versions before installing:
+>
+> ```sh
+> cat /etc/openwrt_release | grep VERSION
+> opkg list-installed | grep podkop
+> sing-box version
+> ```
+>
+> If your versions **differ** — the patch may fail to apply, apply incorrectly and break Podkop, or require manual adjustment.
+>
+> When Podkop is updated via `opkg`, the patch is **overwritten** — re-run the installer to re-apply.
+
+---
+
+### Quick start
+
+> Run all commands over SSH on your OpenWrt router.
+
+#### Step 1 — Connect to the router
+
+```sh
+ssh root@192.168.1.1
+```
+
+> Replace `192.168.1.1` with your router's actual IP.
+> Xiaomi AX6S default gateway is `192.168.31.1`.
+
+#### Step 2 — Install sing-box-extended
+
+```sh
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+```
+
+#### Step 3 — Install this patch
+
+```sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+#### Step 4 — Verify
+
+```sh
+podkop global_check
+sing-box check -c /etc/sing-box/config.json
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
+```
+
+---
+
+### What it fixes
+
+**Fix 1 — xhttp transport** (`sing_box_config_facade.sh`)
+
+Adds the `xhttp)` branch to `_add_outbound_transport()`. Without it Podkop crashes with `Unknown transport 'xhttp' detected`. Parameters are read from the VLESS URL with fallback defaults:
+
+- `path` — from `path=`
+- `host` — from `host=`
+- `mode` — from `mode=`, default: `auto`
+- `x_padding_bytes` — from `xPaddingBytes=` or `extra.xPaddingBytes`, default: `100-1000`
+- `sc_max_each_post_bytes` — from `extra.scMaxEachPostBytes`, default: `1000000`
+- `sc_min_posts_interval_ms` — from `extra.scMinPostsIntervalMs`, default: `30`
+- `alpn` — from `alpn=`, default: `h2,http/1.1`
+
+**Fix 2 — spider_x for Reality** (`sing_box_config_facade.sh`)
+
+Parses `spx` from the VLESS URL and writes it to `tls.reality.spider_x`. Without this fix `spider_x` is always missing.
+
+- `spx=%2F` → `"spider_x": "/"`
+- `spx=%2Fabc123` → `"spider_x": "/abc123"`
+- `spx` absent → `"spider_x": "/"`
+
+The patch uses the value from the link as-is — does **not** force `/`.
+
+**Fix 3 — sing-box-extended version detection** (`/usr/bin/podkop`)
+
+Strips `-extended-2.x.x` suffix so `1.13.11-extended-2.1.0` is parsed as `1.13.11`. Also replaces subshell `(...)` comparison with POSIX-safe `{ ...; }`. After this `podkop global_check` shows green.
+
+---
+
+### Generated sing-box config
+
+```json
+{
+  "type": "vless",
+  "tag": "...",
+  "tls": {
+    "alpn": ["h2", "http/1.1"],
+    "reality": {
+      "enabled": true,
+      "public_key": "...",
+      "short_id": "...",
+      "spider_x": "/"
+    }
+  },
+  "transport": {
+    "type": "xhttp",
+    "path": "/v1/api",
+    "mode": "auto",
+    "host": "example.com",
+    "x_padding_bytes": "100-1000",
+    "sc_max_each_post_bytes": "1000000",
+    "sc_min_posts_interval_ms": "30"
+  }
+}
+```
+
+---
+
+### After Podkop updates
+
+If Podkop is updated via `opkg`, both files are overwritten and patches are lost. Re-run the install command to re-apply.
+
+---
+
+### Rollback
+
+```sh
+ls /root/*.backup.*
+cp /root/sing_box_config_facade.sh.backup.TIMESTAMP /usr/lib/podkop/sing_box_config_facade.sh
+cp /root/podkop.backup.TIMESTAMP /usr/bin/podkop
+/etc/init.d/podkop restart
+```
+
+---
+
+### License
+
+MIT — see [LICENSE](LICENSE).
