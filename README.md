@@ -16,9 +16,9 @@
 > Патч разработан и протестирован **строго** для этих версий:
 >
 > - OpenWrt **25.12.2**
-> - Podkop **0.7.17**
-> - LuCI App Podkop **0.7.17**
-> - sing-box-extended **1.13.11-extended-2.1.0**
+> - Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18**
+> - sing-box-extended **1.13.12-extended-2.1.3**
 >
 > Перед установкой проверьте свои версии:
 >
@@ -100,7 +100,7 @@ jq '.outbounds[] | select(.type=="urltest")' /etc/sing-box/config.json
 
 **Исправление 3 — версия sing-box-extended** (`/usr/bin/podkop`)
 
-Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.11-extended-2.1.0` читалось как `1.13.11`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус вместо ложной ошибки.
+Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.12-extended-2.1.3` читалось как `1.13.11`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус вместо ложной ошибки.
 
 > Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии. Фактическая версия видна в выводе `podkop global_check`.
 
@@ -180,9 +180,9 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > This patch was developed and tested **only** for these specific versions:
 >
 > - OpenWrt **25.12.2**
-> - Podkop **0.7.17**
-> - LuCI App Podkop **0.7.17**
-> - sing-box-extended **1.13.11-extended-2.1.0**
+> - Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18**
+> - sing-box-extended **1.13.12-extended-2.1.3**
 >
 > Check your versions before installing:
 >
@@ -260,7 +260,7 @@ The patch uses the value from the link as-is — does **not** force `/`.
 
 **Fix 3 — sing-box-extended version detection** (`/usr/bin/podkop`)
 
-Strips `-extended-2.x.x` suffix so `1.13.11-extended-2.1.0` is parsed as `1.13.11`. Also replaces subshell `(...)` comparison with POSIX-safe `{ ...; }`. After this `podkop global_check` shows green.
+Strips `-extended-2.x.x` suffix so `1.13.12-extended-2.1.3` is parsed as `1.13.11`. Also replaces subshell `(...)` comparison with POSIX-safe `{ ...; }`. After this `podkop global_check` shows green.
 
 ---
 
