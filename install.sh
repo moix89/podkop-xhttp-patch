@@ -11,7 +11,7 @@ BACKUP_DIR="/root"
 
 # Markers: unique strings present only after the respective patch is applied.
 # Changing a marker forces re-apply even if an older version of the patch exists.
-MARKER_XHTTP="sc_min_posts_interval_ms"
+MARKER_XHTTP="argjson sc_max_each_post_bytes"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
 
@@ -86,14 +86,14 @@ else
             --arg host "$xhttp_host" \
             --arg mode "$xhttp_mode" \
             --arg x_padding_bytes "$xhttp_x_padding_bytes" \
-            --arg sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" \
-            --arg sc_min_posts_interval_ms "$xhttp_sc_min_posts_interval_ms" '
+            --argjson sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" \
+            --argjson sc_min_posts_interval_ms "$xhttp_sc_min_posts_interval_ms" '
             (.outbounds[] | select(.tag == $outbound_tag)) += {
                 transport: (
                     { type: "xhttp", path: $path, mode: $mode, host: $host }
                     + if $x_padding_bytes != "" then { x_padding_bytes: $x_padding_bytes } else {} end
-                    + if $sc_max_each_post_bytes != "" then { sc_max_each_post_bytes: $sc_max_each_post_bytes } else {} end
-                    + if $sc_min_posts_interval_ms != "" then { sc_min_posts_interval_ms: $sc_min_posts_interval_ms } else {} end
+                    + { sc_max_each_post_bytes: $sc_max_each_post_bytes }
+                    + { sc_min_posts_interval_ms: $sc_min_posts_interval_ms }
                 )
             }'
         )
@@ -290,6 +290,7 @@ else
         err "Version fix not applied — pattern not found in $PODKOP. Podkop may have been updated."
     else
         mv "${PODKOP}.tmp" "$PODKOP"
+        chmod +x "$PODKOP"
         log "[3/3] Version detection fix applied."
     fi
 fi
