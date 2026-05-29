@@ -8,6 +8,50 @@
 
 One-command patch that fixes two issues in [Podkop](https://github.com/itdoginfo/podkop) when using `vless://...type=xhttp...` links with **URLTest** on OpenWrt + sing-box-extended.
 
+---
+
+### Quick start (step by step)
+
+> Run all commands over SSH on your OpenWrt router.
+
+#### Step 1 — Connect to the router
+
+```sh
+ssh root@192.168.1.1
+```
+
+#### Step 2 — Install sing-box-extended (replaces the stock sing-box, adds xHTTP support)
+
+```sh
+wget -O /tmp/sb-ext.sh https://raw.githubusercontent.com/EikeiDev/OpenWRT-sing-box-extended/refs/heads/main/install.sh && sh /tmp/sb-ext.sh
+```
+
+#### Step 3 — Install this patch
+
+```sh
+wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patch/main/install.sh && sh /tmp/patch.sh
+```
+
+#### Step 4 — Verify
+
+```sh
+podkop global_check
+```
+
+Expected result:
+
+```text
+✅ Sing-box version is compatible (newer than 1.12.4)
+```
+
+After adding your `vless://...type=xhttp...` links in Podkop, confirm the config was generated:
+
+```sh
+jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
+```
+
+---
+
 ### What it fixes
 
 | # | File | Fix |
