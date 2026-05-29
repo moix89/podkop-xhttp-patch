@@ -11,7 +11,7 @@ BACKUP_DIR="/root"
 
 # Markers: unique strings present only after the respective patch is applied.
 # Changing a marker forces re-apply even if an older version of the patch exists.
-MARKER_XHTTP="argjson sc_max_each_post_bytes"
+MARKER_XHTTP="tonumber"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
 
@@ -77,8 +77,12 @@ else
         # Apply defaults where value is missing
         [ -z "$xhttp_mode" ]              && xhttp_mode="auto"
         [ -z "$xhttp_x_padding_bytes" ]   && xhttp_x_padding_bytes="${xhttp_extra_xpad:-100-1000}"
+        # Values from extra may be quoted strings like "1000000" — strip quotes, use as numbers
         xhttp_sc_max_each_post_bytes="${xhttp_extra_max:-1000000}"
         xhttp_sc_min_posts_interval_ms="${xhttp_extra_min:-30}"
+        # Remove surrounding quotes if present (e.g. "1000000" -> 1000000)
+        xhttp_sc_max_each_post_bytes=$(echo "$xhttp_sc_max_each_post_bytes" | tr -d '"')
+        xhttp_sc_min_posts_interval_ms=$(echo "$xhttp_sc_min_posts_interval_ms" | tr -d '"')
 
         config=$(echo "$config" | jq \
             --arg outbound_tag "$outbound_tag" \
@@ -86,14 +90,14 @@ else
             --arg host "$xhttp_host" \
             --arg mode "$xhttp_mode" \
             --arg x_padding_bytes "$xhttp_x_padding_bytes" \
-            --argjson sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" \
-            --argjson sc_min_posts_interval_ms "$xhttp_sc_min_posts_interval_ms" '
+            --arg sc_max_each_post_bytes "$xhttp_sc_max_each_post_bytes" \
+            --arg sc_min_posts_interval_ms "$xhttp_sc_min_posts_interval_ms" '
             (.outbounds[] | select(.tag == $outbound_tag)) += {
                 transport: (
                     { type: "xhttp", path: $path, mode: $mode, host: $host }
                     + if $x_padding_bytes != "" then { x_padding_bytes: $x_padding_bytes } else {} end
-                    + { sc_max_each_post_bytes: $sc_max_each_post_bytes }
-                    + { sc_min_posts_interval_ms: $sc_min_posts_interval_ms }
+                    + if $sc_max_each_post_bytes != "" then { sc_max_each_post_bytes: ($sc_max_each_post_bytes | tonumber) } else {} end
+                    + if $sc_min_posts_interval_ms != "" then { sc_min_posts_interval_ms: ($sc_min_posts_interval_ms | tonumber) } else {} end
                 )
             }'
         )
