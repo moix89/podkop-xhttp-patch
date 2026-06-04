@@ -15,14 +15,14 @@
 >
 > Патч протестирован на следующих конфигурациях:
 >
-> **OpenWrt 25.12.2:**
+> **OpenWrt 25.12.2 r32802-f505120278:**
 > - Podkop **0.7.18**
-> - LuCI App Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18** (branch 26.082.75780~067535e)
 > - sing-box-extended **1.13.12-extended-2.1.3**
 >
 > **OpenWrt 24.10.3 r28872-daca7c049b:**
 > - Podkop **0.7.17**
-> - LuCI App Podkop **0.7.14**
+> - LuCI App Podkop **0.7.14** (branch 25.250.61039~923f8d9)
 > - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Перед установкой проверьте свои версии:
@@ -333,7 +333,7 @@ logread | grep podkop | tail -30
 
 | OpenWrt | Podkop | LuCI App | sing-box-extended |
 |---|---|---|---|
-| 25.12.2 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 25.12.2 r32802 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
 | 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
 
 - Роутер: Xiaomi Redmi AX6S
@@ -359,14 +359,14 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 >
 > Tested configurations:
 >
-> **OpenWrt 25.12.2:**
+> **OpenWrt 25.12.2 r32802-f505120278:**
 > - Podkop **0.7.18**
-> - LuCI App Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18** (branch 26.082.75780~067535e)
 > - sing-box-extended **1.13.12-extended-2.1.3**
 >
 > **OpenWrt 24.10.3 r28872-daca7c049b:**
 > - Podkop **0.7.17**
-> - LuCI App Podkop **0.7.14**
+> - LuCI App Podkop **0.7.14** (branch 25.250.61039~923f8d9)
 > - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Check your versions before installing:
@@ -519,7 +519,7 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 | OpenWrt | Podkop | LuCI App | sing-box-extended |
 |---|---|---|---|
-| 25.12.2 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 25.12.2 r32802 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
 | 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
 
 - Router: Xiaomi Redmi AX6S
