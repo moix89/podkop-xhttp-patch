@@ -329,7 +329,7 @@ logread | grep podkop | tail -30
 
 ---
 
-### Совместимость
+### Протестировано на
 
 | OpenWrt | Podkop | LuCI App | sing-box-extended |
 |---|---|---|---|
@@ -339,6 +339,9 @@ logread | grep podkop | tail -30
 - Роутер: Xiaomi Redmi AX6S
 - Протокол: VLESS Reality XHTTP
 - Режим: URLTest failover / одиночный URL
+
+> Патч правит только программные файлы Podkop и не зависит от модели роутера.
+> Должен работать на любом OpenWrt-роутере с совпадающими версиями софта.
 
 ---
 
@@ -515,7 +518,7 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 ---
 
-### Compatibility
+### Tested on
 
 | OpenWrt | Podkop | LuCI App | sing-box-extended |
 |---|---|---|---|
@@ -525,6 +528,9 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 - Router: Xiaomi Redmi AX6S
 - Protocol: VLESS Reality XHTTP
 - Mode: URLTest failover / single URL
+
+> The patch only modifies Podkop's software files and is not router-specific.
+> Should work on any OpenWrt router with matching software versions.
 
 ---
 
