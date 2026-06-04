@@ -2,7 +2,7 @@
 # Podkop xHTTP patch
 # - Adds xhttp transport with full parameter support (mode, x_padding_bytes, sc_* fields)
 # - Adds spider_x support for Reality (spx URL param -> tls.reality.spider_x)
-# - Fixes sing-box-extended version detection in /usr/bin/podkop
+# - Fixes sing-box-extended version detection in /usr/bin/podkop (strips -extended-* suffix)
 # https://github.com/moix89/podkop-xhttp-patch
 
 FACADE="/usr/lib/podkop/sing_box_config_facade.sh"
@@ -29,7 +29,7 @@ for cmd in jq sed awk; do
     command -v "$cmd" >/dev/null 2>&1 || die "$cmd not found. Install: opkg install $cmd"
 done
 command -v sing-box >/dev/null 2>&1 \
-    || warn "sing-box not found. Make sure sing-box-extended is installed."
+    || warn "sing-box not found. Install sing-box-extended 1.13.x before running this patch."
 
 [ -f "$FACADE" ] || die "Not found: $FACADE — is Podkop installed?"
 [ -f "$PODKOP" ] || die "Not found: $PODKOP — is Podkop installed?"
@@ -42,7 +42,7 @@ PODKOP_VER=$("$PODKOP" show_version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9
 [ -z "$PODKOP_VER" ] && PODKOP_VER="unknown"
 log "Podkop version: $PODKOP_VER"
 case "$PODKOP_VER" in
-    0.7.17|0.7.18) ;;
+    0.7.17|0.7.18|0.7.19) ;;
     unknown) warn "Could not detect Podkop version — proceeding anyway." ;;
     *) warn "Podkop $PODKOP_VER is untested. Patch may not apply correctly." ;;
 esac
