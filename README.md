@@ -49,6 +49,13 @@
 
 ---
 
+> [!WARNING]
+> ⚠️ **Отказ от ответственности**
+>
+> Скрипт предоставляется «как есть». Рекомендуется ознакомиться с кодом перед запуском.
+
+---
+
 ### Быстрый старт
 
 > Все команды выполняются на роутере через SSH.
@@ -393,6 +400,13 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > If your link contains this parameter — the connection will fail with N/A ping.
 >
 > In your server panel (3x-ui etc.) on the **Protocol** tab set **Encryption = none** and click **Clear** to remove selected algorithms. The link must contain `encryption=none`.
+
+---
+
+> [!WARNING]
+> ⚠️ **Disclaimer**
+>
+> The script is provided "as is". It is recommended to review the code before running.
 
 ---
 
