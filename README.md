@@ -13,12 +13,17 @@
 > [!CAUTION]
 > **ВНИМАНИЕ: ПРОВЕРЬТЕ ВЕРСИИ ПЕРЕД УСТАНОВКОЙ**
 >
-> Патч разработан и протестирован **строго** для этих версий:
+> Патч протестирован на следующих конфигурациях:
 >
-> - OpenWrt **25.12.2**
+> **OpenWrt 25.12.2:**
 > - Podkop **0.7.18**
 > - LuCI App Podkop **0.7.18**
 > - sing-box-extended **1.13.12-extended-2.1.3**
+>
+> **OpenWrt 24.10.3 r28872-daca7c049b:**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.14**
+> - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Перед установкой проверьте свои версии:
 >
@@ -326,10 +331,12 @@ logread | grep podkop | tail -30
 
 ### Совместимость
 
-- OpenWrt 25.12.2
+| OpenWrt | Podkop | LuCI App | sing-box-extended |
+|---|---|---|---|
+| 25.12.2 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
+
 - Роутер: Xiaomi Redmi AX6S
-- Podkop 0.7.17 / 0.7.18
-- sing-box-extended 1.13.12-extended-2.1.3
 - Протокол: VLESS Reality XHTTP
 - Режим: URLTest failover / одиночный URL
 
@@ -350,12 +357,17 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > [!CAUTION]
 > **WARNING: CHECK YOUR VERSIONS BEFORE INSTALLING**
 >
-> This patch was developed and tested **only** for these specific versions:
+> Tested configurations:
 >
-> - OpenWrt **25.12.2**
+> **OpenWrt 25.12.2:**
 > - Podkop **0.7.18**
 > - LuCI App Podkop **0.7.18**
 > - sing-box-extended **1.13.12-extended-2.1.3**
+>
+> **OpenWrt 24.10.3 r28872-daca7c049b:**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.14**
+> - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Check your versions before installing:
 >
@@ -505,10 +517,12 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 ### Compatibility
 
-- OpenWrt 25.12.2
+| OpenWrt | Podkop | LuCI App | sing-box-extended |
+|---|---|---|---|
+| 25.12.2 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
+
 - Router: Xiaomi Redmi AX6S
-- Podkop 0.7.17 / 0.7.18
-- sing-box-extended 1.13.12-extended-2.1.3
 - Protocol: VLESS Reality XHTTP
 - Mode: URLTest failover / single URL
 
