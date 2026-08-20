@@ -18,14 +18,19 @@
 > `xhttp` **не поддерживается нативно ни в одной версии** (включая 0.7.22 и main) — патч 1
 > нужен всегда. Логика проверки версии sing-box (патч 3/4) детектируется автоматически:
 > на 0.7.17–0.7.21 заменяется баговый ручной код сравнения версий на исправленный вариант
-> из 0.7.22; на 0.7.22+ (где апстрим уже почтил это сам) патч ничего не делает.
+> из 0.7.22; на 0.7.22+ (где апстрим уже поправил это сам) патч ничего не делает.
 >
-> Протестировано на:
+> Патч протестирован на следующих конфигурациях:
 >
-> - OpenWrt **25.12.2**
-> - Podkop **0.7.18** (apk-пакет)
-> - LuCI App Podkop **0.7.18**
+> **OpenWrt 25.12.2 r32802-f505120278:**
+> - Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18** (branch 26.082.75780~067535e)
 > - sing-box-extended **1.13.12-extended-2.1.3**
+>
+> **OpenWrt 24.10.3 r28872-daca7c049b:**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.14** (branch 25.250.61039~923f8d9)
+> - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Перед установкой проверьте свои версии:
 >
@@ -52,6 +57,13 @@
 > Если ваша ссылка содержит этот параметр — соединение не установится, пинг будет N/A.
 >
 > В панели сервера (3x-ui и др.) на вкладке **Протокол** установите **Шифрование = none**, кнопку **Очистить** — убрать выбранные алгоритмы. Ссылка должна содержать `encryption=none`.
+
+---
+
+> [!WARNING]
+> ⚠️ **Отказ от ответственности**
+>
+> Скрипт предоставляется «как есть». Рекомендуется ознакомиться с кодом перед запуском.
 
 ---
 
@@ -168,7 +180,7 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
     "type": "xhttp",
     "path": "/v1/excuse/api",
     "mode": "auto",
-    "host": "ruvds.gazrul.ru",
+    "host": "example.com",
     "x_padding_bytes": "100-1000",
     "sc_max_each_post_bytes": "1000000",
     "sc_min_posts_interval_ms": "30"
@@ -337,14 +349,20 @@ logread | grep podkop | tail -30
 
 ---
 
-### Совместимость
+### Протестировано на
 
-- OpenWrt 25.12.2
+| OpenWrt | Podkop | LuCI App | sing-box-extended |
+|---|---|---|---|
+| 25.12.2 r32802 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
+
 - Роутер: Xiaomi Redmi AX6S
-- Podkop 0.7.17 – 0.7.22 (протестировано на 0.7.18; версия детектируется и патчи применяются по обстоятельствам)
-- sing-box-extended 1.13.12-extended-2.1.3
+- Podkop 0.7.17 – 0.7.22 (версия детектируется автоматически, патчи применяются по обстоятельствам)
 - Протокол: VLESS Reality XHTTP
 - Режим: URLTest failover / одиночный URL
+
+> Патч правит только программные файлы Podkop и не зависит от модели роутера.
+> Должен работать на любом OpenWrt-роутере с совпадающими версиями софта.
 
 ---
 
@@ -370,12 +388,17 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > it replaces the buggy hand-rolled comparison with the fixed version from 0.7.22; on
 > 0.7.22+ (where upstream already fixed it) the patch is a no-op.
 >
-> Tested on:
+> Tested configurations:
 >
-> - OpenWrt **25.12.2**
-> - Podkop **0.7.18** (apk package)
-> - LuCI App Podkop **0.7.18**
+> **OpenWrt 25.12.2 r32802-f505120278:**
+> - Podkop **0.7.18**
+> - LuCI App Podkop **0.7.18** (branch 26.082.75780~067535e)
 > - sing-box-extended **1.13.12-extended-2.1.3**
+>
+> **OpenWrt 24.10.3 r28872-daca7c049b:**
+> - Podkop **0.7.17**
+> - LuCI App Podkop **0.7.14** (branch 25.250.61039~923f8d9)
+> - sing-box-extended **1.13.12-extended-2.3.0**
 >
 > Check your versions before installing:
 >
@@ -397,6 +420,13 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > If your link contains this parameter — the connection will fail with N/A ping.
 >
 > In your server panel (3x-ui etc.) on the **Protocol** tab set **Encryption = none** and click **Clear** to remove selected algorithms. The link must contain `encryption=none`.
+
+---
+
+> [!WARNING]
+> ⚠️ **Disclaimer**
+>
+> The script is provided "as is". It is recommended to review the code before running.
 
 ---
 
@@ -522,14 +552,20 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 ---
 
-### Compatibility
+### Tested on
 
-- OpenWrt 25.12.2
+| OpenWrt | Podkop | LuCI App | sing-box-extended |
+|---|---|---|---|
+| 25.12.2 r32802 | 0.7.17 / 0.7.18 | 0.7.17 / 0.7.18 | 1.13.12-extended-2.1.3 |
+| 24.10.3 r28872 | 0.7.17 | 0.7.14 | 1.13.12-extended-2.3.0 |
+
 - Router: Xiaomi Redmi AX6S
-- Podkop 0.7.17 – 0.7.22 (tested on 0.7.18; version is auto-detected and patches applied accordingly)
-- sing-box-extended 1.13.12-extended-2.1.3
+- Podkop 0.7.17 – 0.7.22 (version is auto-detected, patches applied accordingly)
 - Protocol: VLESS Reality XHTTP
 - Mode: URLTest failover / single URL
+
+> The patch only modifies Podkop's software files and is not router-specific.
+> Should work on any OpenWrt router with matching software versions.
 
 ---
 

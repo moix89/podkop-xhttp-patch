@@ -32,7 +32,7 @@ for cmd in jq sed awk; do
     command -v "$cmd" >/dev/null 2>&1 || die "$cmd not found. Install: opkg install $cmd"
 done
 command -v sing-box >/dev/null 2>&1 \
-    || warn "sing-box not found. Make sure sing-box-extended is installed."
+    || warn "sing-box not found. Install sing-box-extended 1.13.x before running this patch."
 
 [ -f "$FACADE" ] || die "Not found: $FACADE — is Podkop installed?"
 [ -f "$PODKOP" ] || die "Not found: $PODKOP — is Podkop installed?"
