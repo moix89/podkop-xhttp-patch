@@ -1,8 +1,12 @@
 #!/bin/sh
 # Podkop xHTTP patch
 # - Adds xhttp transport with full parameter support (mode, x_padding_bytes, sc_* fields)
-# - Adds spider_x support for Reality (spx URL param -> tls.reality.spider_x)
-# - Fixes sing-box-extended version detection in /usr/bin/podkop
+# - Removes spider_x leftovers from old patch runs (not supported by sing-box 1.13.x)
+# - Fixes check_sing_box() version comparison in /usr/bin/podkop for sing-box-extended
+# Tested against Podkop 0.7.17 - 0.7.22 (upstream: https://github.com/itdoginfo/podkop).
+# xhttp transport is not natively supported by any of these versions, so patch 1
+# always applies. The version-check patch (3/4) auto-detects whether it's needed
+# and is a no-op on 0.7.22+, where upstream fixed check_sing_box() itself.
 # https://github.com/moix89/podkop-xhttp-patch
 
 FACADE="/usr/lib/podkop/sing_box_config_facade.sh"
@@ -14,7 +18,6 @@ BACKUP_DIR="/root"
 MARKER_XHTTP="xhttp_sc_min_posts_interval_ms"
 MARKER_SPIDER="spider_x"
 MARKER_VERSION="cut -d'-' -f1"
-MARKER_CMPFIX="major.*gt 1.*|| \\\\"
 
 ERRORS=0
 
@@ -39,13 +42,13 @@ command -v sing-box >/dev/null 2>&1 \
 PODKOP_VER=$("$PODKOP" show_version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 [ -z "$PODKOP_VER" ] && PODKOP_VER=$(opkg list-installed 2>/dev/null | awk '/^podkop /{print $3}')
 [ -z "$PODKOP_VER" ] && PODKOP_VER=$(opkg info podkop 2>/dev/null | awk '/^Version:/{print $2}')
+[ -z "$PODKOP_VER" ] && PODKOP_VER=$(apk info -e podkop 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+[ -z "$PODKOP_VER" ] && PODKOP_VER=$(apk list -I 2>/dev/null | awk '/^podkop-/{print $1}' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 [ -z "$PODKOP_VER" ] && PODKOP_VER="unknown"
 log "Podkop version: $PODKOP_VER"
-case "$PODKOP_VER" in
-    0.7.17|0.7.18) ;;
-    unknown) warn "Could not detect Podkop version — proceeding anyway." ;;
-    *) warn "Podkop $PODKOP_VER is untested. Patch may not apply correctly." ;;
-esac
+# Every known version (0.7.17 .. 0.7.22 and upstream main, as of 2026-08) is missing
+# native xhttp support, so no version is excluded here — this is informational only.
+[ "$PODKOP_VER" = "unknown" ] && warn "Could not detect Podkop version — proceeding anyway."
 
 # ── backup ────────────────────────────────────────────────────────────────────
 
@@ -64,9 +67,9 @@ log "Backup: $BACKUP_DIR/podkop.backup.$TS"
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_XHTTP" "$FACADE"; then
-    log "[1/3] xhttp block — already up to date, skipping."
+    log "[1/4] xhttp block — already up to date, skipping."
 else
-    log "[1/3] Inserting/updating xhttp transport block..."
+    log "[1/4] Inserting/updating xhttp transport block..."
 
     BLOCK_FILE="/tmp/_podkop_xhttp_block.$$"
     cat > "$BLOCK_FILE" << 'XHTTP_BLOCK_EOF'
@@ -191,7 +194,7 @@ XHTTP_BLOCK_EOF
         err "xhttp block not found after patch — check grpc block indentation in $FACADE"
     else
         mv "${FACADE}.tmp" "$FACADE"
-        log "[1/3] xhttp transport block applied."
+        log "[1/4] xhttp transport block applied."
     fi
 fi
 
@@ -202,7 +205,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 
 if grep -q "$MARKER_SPIDER" "$FACADE"; then
-    log "[2/3] Removing spider_x block (not supported by sing-box 1.13.12+)..."
+    log "[2/4] Removing spider_x block (not supported by sing-box 1.13.12+)..."
 
     # Remove lines from "local spx spider_x" through the closing ) of the jq call
     awk '
@@ -221,36 +224,111 @@ if grep -q "$MARKER_SPIDER" "$FACADE"; then
         err "spider_x block removal failed"
     else
         mv "${FACADE}.tmp" "$FACADE"
-        log "[2/3] spider_x block removed."
+        log "[2/4] spider_x block removed."
     fi
 else
-    log "[2/3] spider_x — not present, skipping."
+    log "[2/4] spider_x — not present, skipping."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PATCH 3 — sing-box version detection in /usr/bin/podkop
-# 3a/3b: strip -extended-* suffix (marker: cut -d'-' -f1)
-# 3c:    fix version comparison operator precedence in ash (marker: major.*gt 1.*|| \\)
+# PATCH 3 — fix check_sing_box() version comparison in /usr/bin/podkop
+#
+# Podkop has TWO independent sing-box version checks:
+#   - check_requirements() — uses the shared is_min_package_version() (sort -V
+#     based) from helpers.sh. Never buggy, unaffected by this patch.
+#   - check_sing_box()     — up to Podkop 0.7.21 this had its OWN hand-rolled
+#     comparison: `cut -d. -f1/2/3` + a multi-line `[ A ] || [ B ] && [ C ]`
+#     chain. In ash, && binds tighter than ||, so the chain evaluates wrong;
+#     worse, `cut -d. -f3` on a version with an "-extended-X.Y.Z" suffix
+#     (e.g. sing-box-extended) yields a non-numeric patch field, which makes
+#     `[ "$patch" -ge 4 ]` error out or silently fail. Net effect: LuCI shows
+#     sing-box as "incompatible" even when it works fine.
+#     Podkop 0.7.22+ fixed this upstream by rewriting check_sing_box() to
+#     call the same is_min_package_version() as check_requirements().
+#
+# This patch replaces the ENTIRE check_sing_box() function body with the
+# upstream 0.7.22+ version whenever the old hand-rolled comparison is found.
+# On Podkop 0.7.22+ the old code is already gone, so this is a no-op there.
+# Idempotent: marker = is_min_package_version "$version" "1.12.4"
 # ─────────────────────────────────────────────────────────────────────────────
 
-if grep -q "$MARKER_VERSION" "$PODKOP"; then
-    log "[3/3] Version string fix — already installed, skipping."
+MARKER_CHECK_SINGBOX_FIXED='is_min_package_version "$version" "1.12.4"'
+
+if grep -qF "$MARKER_CHECK_SINGBOX_FIXED" "$PODKOP"; then
+    log "[3/4] check_sing_box() version check — already up to date, skipping."
+elif ! grep -q '^check_sing_box()' "$PODKOP"; then
+    warn "[3/4] check_sing_box() not found in $PODKOP — skipping (Podkop internals may have changed)."
 else
-    log "[3/3] Fixing sing-box version string parsing..."
+    log "[3/4] Rewriting check_sing_box() version check to use is_min_package_version()..."
+
+    BLOCK_FILE="/tmp/_podkop_checksb_block.$$"
+    cat > "$BLOCK_FILE" << 'CHECKSB_BLOCK_EOF'
+        # Check version (must be >= 1.12.4)
+        local version
+        version=$(sing-box version 2> /dev/null | head -n 1 | awk '{print $3}')
+        version="${version#v}"
+        if [ -n "$version" ] && is_min_package_version "$version" "1.12.4"; then
+            sing_box_version_ok=1
+        fi
+CHECKSB_BLOCK_EOF
+
+    # Replace from "# Check version" through the matching closing "fi" of the
+    # old hand-rolled block. Known exact shape (unchanged across 0.7.17-0.7.21):
+    # one "if [ -n "$version" ]; then" opener, one inner "if [...]...then" for
+    # the major/minor/patch compare, so exactly two top-level-indented "fi"
+    # lines close the block — replace up through the second one.
+    awk '
+    BEGIN { skip=0; done=0; fi_count=0 }
+    !done && /# Check version \(must be >= 1\.12\.4\)/ {
+        skip=1
+        while ((getline line < BLOCK_FILE) > 0) { print line }
+        close(BLOCK_FILE)
+        next
+    }
+    skip {
+        if ($0 ~ /^[[:space:]]*fi[[:space:]]*$/) {
+            fi_count++
+            if (fi_count >= 2) { skip=0; done=1 }
+        }
+        next
+    }
+    { print }
+    ' BLOCK_FILE="$BLOCK_FILE" "$PODKOP" > "${PODKOP}.tmp"
+
+    rm -f "$BLOCK_FILE"
+
+    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed: $PODKOP"; }
+
+    if ! grep -qF "$MARKER_CHECK_SINGBOX_FIXED" "${PODKOP}.tmp"; then
+        rm -f "${PODKOP}.tmp"
+        err "check_sing_box() rewrite failed — pattern not found after patch in $PODKOP"
+    else
+        mv "${PODKOP}.tmp" "$PODKOP"
+        chmod +x "$PODKOP"
+        log "[3/4] check_sing_box() version check fixed."
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATCH 4 — clean up remnants of the old point-fix patches (pre-2026-08 versions
+# of this script), which left a stray `cut -d'-' -f1` in check_requirements().
+# check_requirements() itself was never buggy (is_min_package_version handles
+# "-extended-X.Y.Z" suffixes fine via sort -V), so this only removes noise
+# introduced by earlier runs of THIS patch, not an upstream bug.
+# Idempotent: no-op if the marker isn't present.
+# ─────────────────────────────────────────────────────────────────────────────
+
+if grep -qF "$MARKER_VERSION" "$PODKOP"; then
+    log "[4/4] Removing stray cut -d'-' -f1 from an older patch run..."
 
     cp "$PODKOP" "${PODKOP}.tmp"
 
     SQ="'"
+    NEEDLE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)\""
+    REPLACE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ})\""
+    NEEDLE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)"
+    REPLACE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ})"
 
-    # 3a. check_requirements(): add | cut -d'-' -f1 after awk '{print $3}'
-    NEEDLE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ})\""
-    REPLACE_A="sing-box version | head -n1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)\""
-
-    # 3b. check_sing_box(): same for the 2>/dev/null form
-    NEEDLE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ})"
-    REPLACE_B="sing-box version 2> /dev/null | head -n 1 | awk ${SQ}{print \$3}${SQ} | cut -d${SQ}-${SQ} -f1)"
-
-    # Use index()+substr() — gsub() would treat needles as regex (breaks on $, (, [)
     awk -v na="$NEEDLE_A" -v ra="$REPLACE_A" \
         -v nb="$NEEDLE_B" -v rb="$REPLACE_B" '
     {
@@ -264,56 +342,18 @@ else
     ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
     mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
 
+    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed (cleanup): $PODKOP"; }
 
-    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed: $PODKOP"; }
-
-    if ! grep -q "$MARKER_VERSION" "${PODKOP}.tmp"; then
+    if grep -qF "$MARKER_VERSION" "${PODKOP}.tmp"; then
         rm -f "${PODKOP}.tmp"
-        err "Version fix not applied — pattern not found in $PODKOP. Podkop may have been updated."
+        err "Cleanup of stray cut -f1 failed — pattern still present in $PODKOP"
     else
         mv "${PODKOP}.tmp" "$PODKOP"
         chmod +x "$PODKOP"
-        log "[3/3] Version string fix applied."
+        log "[4/4] Stray cut -d'-' -f1 removed."
     fi
-fi
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PATCH 4 — fix version comparison operator precedence in ash
-# In ash, && binds tighter than ||, so the multi-line condition without braces
-# evaluates incorrectly (1.13.x fails the check despite being > 1.12.4).
-# Idempotent: marker = major.*gt 1.*|| \\
-# ─────────────────────────────────────────────────────────────────────────────
-
-if grep -q '{ \[ "\$major" -eq 1 \]' "$PODKOP"; then
-    log "[4/4] Version comparison fix — already installed, skipping."
 else
-    log "[4/4] Fixing version comparison operator precedence..."
-
-    cp "$PODKOP" "${PODKOP}.tmp"
-
-    awk '
-    /if \[ "\$major" -gt 1 \] \|\|$/ {
-        getline
-        getline
-        print "            if [ \"$major\" -gt 1 ] || \\"
-        print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -gt 12 ]; } || \\"
-        print "               { [ \"$major\" -eq 1 ] && [ \"$minor\" -eq 12 ] && [ \"$patch\" -ge 4 ]; }; then"
-        next
-    }
-    { print $0 }
-    ' "${PODKOP}.tmp" > "${PODKOP}.tmp2"
-    mv "${PODKOP}.tmp2" "${PODKOP}.tmp"
-
-    sh -n "${PODKOP}.tmp" || { rm -f "${PODKOP}.tmp"; err "Syntax check failed (cmp fix): $PODKOP"; }
-
-    if ! grep -q '{ \[ "\$major" -eq 1 \]' "${PODKOP}.tmp"; then
-        rm -f "${PODKOP}.tmp"
-        err "Version comparison fix not applied — pattern not found in $PODKOP"
-    else
-        mv "${PODKOP}.tmp" "$PODKOP"
-        chmod +x "$PODKOP"
-        log "[4/4] Version comparison fix applied."
-    fi
+    log "[4/4] No stray patch remnants found, skipping."
 fi
 
 # ── restart ───────────────────────────────────────────────────────────────────

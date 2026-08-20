@@ -13,10 +13,17 @@
 > [!CAUTION]
 > **ВНИМАНИЕ: ПРОВЕРЬТЕ ВЕРСИИ ПЕРЕД УСТАНОВКОЙ**
 >
-> Патч разработан и протестирован **строго** для этих версий:
+> Патч поддерживает Podkop **0.7.17 – 0.7.22** (актуальный релиз апстрима на 2026-08-20).
+> В upstream-репозитории [itdoginfo/podkop](https://github.com/itdoginfo/podkop) транспорт
+> `xhttp` **не поддерживается нативно ни в одной версии** (включая 0.7.22 и main) — патч 1
+> нужен всегда. Логика проверки версии sing-box (патч 3/4) детектируется автоматически:
+> на 0.7.17–0.7.21 заменяется баговый ручной код сравнения версий на исправленный вариант
+> из 0.7.22; на 0.7.22+ (где апстрим уже почтил это сам) патч ничего не делает.
+>
+> Протестировано на:
 >
 > - OpenWrt **25.12.2**
-> - Podkop **0.7.18**
+> - Podkop **0.7.18** (apk-пакет)
 > - LuCI App Podkop **0.7.18**
 > - sing-box-extended **1.13.12-extended-2.1.3**
 >
@@ -24,13 +31,17 @@
 >
 > ```sh
 > cat /etc/openwrt_release | grep VERSION
-> opkg list-installed | grep podkop
+> apk list -I | grep podkop   # OpenWrt 24.10+ (apk)
+> opkg list-installed | grep podkop   # старые прошивки (opkg)
 > sing-box version
 > ```
 >
-> Если ваши версии **отличаются** — патч может не примениться, примениться неправильно и сломать Podkop, или потребовать ручной доработки.
+> Если версия Podkop новее 0.7.22 — патч всё равно попытается применить xhttp-блок
+> (он ещё не появился в апстриме на момент написания) и молча пропустит патч версии,
+> если апстрим его уже поправил. Если структура файлов Podkop изменится кардинально —
+> патч сообщит об ошибке, а не сломает файл молча.
 >
-> При обновлении Podkop через `opkg` патч **слетает** — нужно запустить установку повторно.
+> При обновлении Podkop через `opkg`/`apk` патч **слетает** — нужно запустить установку повторно.
 
 ---
 
@@ -121,11 +132,13 @@ jq '.outbounds[] | select(.transport.type=="xhttp")' /etc/sing-box/config.json
 - `sc_min_posts_interval_ms` — из `extra.scMinPostsIntervalMs`, дефолт: `"30"` (строка)
 - `alpn` — из `alpn=`, дефолт: `h2,http/1.1`
 
-**Исправление 2 — версия sing-box-extended** (`/usr/bin/podkop`)
+**Исправление 2 — версия sing-box-extended** (`/usr/bin/podkop`, функция `check_sing_box()`)
 
-Обрезает суффикс `-extended-2.x.x`, чтобы `1.13.12-extended-2.1.3` читалось как `1.13.12`. Заменяет `(...)` в сравнении версии на POSIX-совместимый `{ ...; }`. После этого `podkop global_check` показывает зелёный статус.
+В Podkop 0.7.17–0.7.21 эта функция сравнивает версию sing-box вручную через `cut -d. -f1/2/3` и цепочку `[ A ] || [ B ] && [ C ]`. В POSIX ash `&&` связывает сильнее `||`, поэтому условие срабатывает некорректно; вдобавок суффикс `-extended-2.1.3` ломает `cut -d. -f3` (нечисловое значение). В итоге `podkop global_check`/LuCI показывает sing-box как несовместимый, даже если он работает.
 
-> Текст `(newer than 1.12.4)` — это название условия совместимости, не номер версии.
+Патч заменяет тело `check_sing_box()` на версию, которую сам апстрим Podkop внедрил в **0.7.22** — через общую функцию `is_min_package_version()` (сравнение через `sort -V`, устойчива к суффиксу `-extended-...`). На Podkop 0.7.22+ этот код уже стоит из коробки, патч это определяет и ничего не делает.
+
+> Функция `check_requirements()` (стартовый gate-check при запуске сервиса) не патчится — она с самого начала использует `is_min_package_version()` и работает корректно на всех версиях.
 
 ---
 
@@ -303,7 +316,7 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 ```sh
 # Версии компонентов
 cat /etc/openwrt_release | grep VERSION
-opkg list-installed | grep podkop
+apk list -I | grep podkop || opkg list-installed | grep podkop
 sing-box version
 
 # Проверка патча
@@ -328,7 +341,7 @@ logread | grep podkop | tail -30
 
 - OpenWrt 25.12.2
 - Роутер: Xiaomi Redmi AX6S
-- Podkop 0.7.17 / 0.7.18
+- Podkop 0.7.17 – 0.7.22 (протестировано на 0.7.18; версия детектируется и патчи применяются по обстоятельствам)
 - sing-box-extended 1.13.12-extended-2.1.3
 - Протокол: VLESS Reality XHTTP
 - Режим: URLTest failover / одиночный URL
@@ -350,10 +363,17 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 > [!CAUTION]
 > **WARNING: CHECK YOUR VERSIONS BEFORE INSTALLING**
 >
-> This patch was developed and tested **only** for these specific versions:
+> The patch supports Podkop **0.7.17 – 0.7.22** (latest upstream release as of 2026-08-20).
+> Upstream [itdoginfo/podkop](https://github.com/itdoginfo/podkop) does **not** support the
+> `xhttp` transport natively in any version (including 0.7.22 and main) — patch 1 always
+> applies. The sing-box version-check logic (patch 3/4) is auto-detected: on 0.7.17–0.7.21
+> it replaces the buggy hand-rolled comparison with the fixed version from 0.7.22; on
+> 0.7.22+ (where upstream already fixed it) the patch is a no-op.
+>
+> Tested on:
 >
 > - OpenWrt **25.12.2**
-> - Podkop **0.7.18**
+> - Podkop **0.7.18** (apk package)
 > - LuCI App Podkop **0.7.18**
 > - sing-box-extended **1.13.12-extended-2.1.3**
 >
@@ -361,13 +381,12 @@ One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](htt
 >
 > ```sh
 > cat /etc/openwrt_release | grep VERSION
-> opkg list-installed | grep podkop
+> apk list -I | grep podkop   # OpenWrt 24.10+ (apk)
+> opkg list-installed | grep podkop   # older firmware (opkg)
 > sing-box version
 > ```
 >
-> If your versions **differ** — the patch may fail to apply, apply incorrectly and break Podkop, or require manual adjustment.
->
-> When Podkop is updated via `opkg`, the patch is **overwritten** — re-run the installer to re-apply.
+> When Podkop is updated via `opkg`/`apk`, the patch is **overwritten** — re-run the installer to re-apply.
 
 ---
 
@@ -507,7 +526,7 @@ wget -O /tmp/patch.sh https://raw.githubusercontent.com/moix89/podkop-xhttp-patc
 
 - OpenWrt 25.12.2
 - Router: Xiaomi Redmi AX6S
-- Podkop 0.7.17 / 0.7.18
+- Podkop 0.7.17 – 0.7.22 (tested on 0.7.18; version is auto-detected and patches applied accordingly)
 - sing-box-extended 1.13.12-extended-2.1.3
 - Protocol: VLESS Reality XHTTP
 - Mode: URLTest failover / single URL
