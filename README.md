@@ -10,6 +10,21 @@
 
 ---
 
+### Что нового (2026-08-20)
+
+Апстрим Podkop дошёл до версии **0.7.22** и по пути (18.08.2026) переписал функцию `check_sing_box()`, заменив собственный баговый разбор версии sing-box на общую `is_min_package_version()`. Это ровно та проблема, которую раньше чинил патч 3/4 в этом репозитории точечной заменой строк — на новых версиях Podkop точечный фикс просто не находил свою цель.
+
+- Патч теперь **автоматически определяет**, какая версия `check_sing_box()` установлена, и:
+  - на Podkop **0.7.17–0.7.21** — заменяет весь баговый блок сравнения версии на исправленный вариант (тот же, что и в 0.7.22);
+  - на Podkop **0.7.22+** — ничего не делает, апстрим уже всё исправил сам.
+- Транспорт `xhttp` **по-прежнему не поддерживается нативно** ни в одной версии Podkop, включая 0.7.22 и main (мейнтейнеры закрыли feature-запрос как invalid) — патч 1 (вставка блока `xhttp)`) нужен и применяется всегда, независимо от версии.
+- Убран жёсткий список поддерживаемых версий (раньше патч предупреждал на всём, что не `0.7.17`/`0.7.18`) — теперь предупреждение показывается только если версию вообще не удалось определить.
+- Добавлена поддержка `apk` для определения версии Podkop (OpenWrt 24.10+ использует `apk` вместо `opkg`).
+
+**Официально протестировано:** Podkop 0.7.17 – 0.7.22 (подробности — в блоке ниже и в разделе «Протестировано на»).
+
+---
+
 > [!CAUTION]
 > **ВНИМАНИЕ: ПРОВЕРЬТЕ ВЕРСИИ ПЕРЕД УСТАНОВКОЙ**
 >
@@ -375,6 +390,21 @@ MIT — см. [LICENSE](LICENSE).
 ## English
 
 One-command patch that adds full **VLESS Reality XHTTP** support to [Podkop](https://github.com/itdoginfo/podkop) on OpenWrt + sing-box-extended.
+
+---
+
+### What's new (2026-08-20)
+
+Upstream Podkop reached version **0.7.22**, and along the way (2026-08-18) rewrote `check_sing_box()`, replacing its own buggy sing-box version parsing with the shared `is_min_package_version()`. That's exactly the bug this repo's patch 3/4 used to fix with a targeted string replacement — on newer Podkop versions, that targeted fix simply had nothing to match anymore.
+
+- The patch now **auto-detects** which version of `check_sing_box()` is installed:
+  - on Podkop **0.7.17–0.7.21** — it replaces the entire buggy version-comparison block with the fixed version (the same one shipped in 0.7.22);
+  - on Podkop **0.7.22+** — it's a no-op, since upstream already fixed it.
+- The `xhttp` transport is **still not natively supported** by any Podkop version, including 0.7.22 and main (maintainers closed the feature request as invalid) — patch 1 (inserting the `xhttp)` block) is still needed and always applies, regardless of version.
+- Removed the hardcoded supported-version allowlist (previously the patch warned on anything other than `0.7.17`/`0.7.18`) — now it only warns if the version couldn't be detected at all.
+- Added `apk` support for Podkop version detection (OpenWrt 24.10+ ships `apk` instead of `opkg`).
+
+**Officially tested on:** Podkop 0.7.17 – 0.7.22 (see the caution block below and the "Tested on" section for exact configurations).
 
 ---
 
